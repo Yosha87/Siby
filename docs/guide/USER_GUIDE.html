@@ -1,0 +1,687 @@
+<title>Siby User Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one reading column with a sticky contents rail on wide screens;
+   colours from Siby's own board (Lichess blue) */
+:root {
+  --bg: #f5f7fa; --surface: #ffffff; --fg: #1d2430; --muted: #5b6676;
+  --line: #d9dfe7; --accent: #2f6fb3; --accent-soft: #e3edf8; --key: #eef1f5;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #16191e; --surface: #1f242b; --fg: #e4e8ee; --muted: #9aa5b4;
+  --line: #313843; --accent: #6fa8e3; --accent-soft: #1f3247; --key: #2a3038; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #16191e; --surface: #1f242b; --fg: #e4e8ee; --muted: #9aa5b4;
+  --line: #313843; --accent: #6fa8e3; --accent-soft: #1f3247; --key: #2a3038; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 17px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.page { max-width: 1180px; margin: 0 auto; padding-block: 40px 80px;
+  display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start;
+  font-size: 14.5px; max-height: calc(100vh - 48px); overflow-y: auto; }
+nav.toc .marque { font: 700 22px/1.1 var(--display); margin-bottom: 4px; }
+nav.toc .sous { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+nav.toc ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; counter-reset: s; }
+nav.toc li { counter-increment: s; }
+nav.toc a { display: block; padding: 4px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; }
+nav.toc a::before { content: counter(s) "  "; font-family: var(--mono); font-size: 11px; color: var(--accent); }
+nav.toc a:hover, nav.toc a:focus-visible { background: var(--accent-soft); color: var(--fg); outline: none; }
+article { min-width: 0; }
+article > h1 { font: 700 clamp(34px, 5vw, 52px)/1.05 var(--display); letter-spacing: -0.02em; margin: 0 0 18px; text-wrap: balance; }
+article > p, article li { max-width: 68ch; }
+h2 { font: 700 28px/1.2 var(--display); margin: 64px 0 14px; padding-top: 18px; border-top: 1px solid var(--line); text-wrap: balance; scroll-margin-top: 20px; }
+h3 { font: 600 19px/1.3 var(--display); margin: 32px 0 8px; scroll-margin-top: 20px; }
+a { color: var(--accent); }
+hr { display: none; }
+article > h2#contents, article > h2#contents + ol { display: none; }
+figure { margin: 22px 0 28px; }
+figure img { display: block; max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line);
+  box-shadow: 0 10px 30px -18px rgba(0,0,0,.45); }
+figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+em { color: var(--muted); }
+p > em:only-child { display: block; border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; color: var(--fg); font-style: normal; background: var(--accent-soft); border-radius: 0 6px 6px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 15.5px; margin: 14px 0 22px; }
+.tableau { overflow-x: auto; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 13px/1.3 var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+td.touches, code { font-family: var(--mono); font-size: 13.5px; }
+td.touches { white-space: nowrap; }
+code { background: var(--key); padding: 1px 6px; border-radius: 4px; }
+@media (max-width: 860px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding-block: 24px 60px; }
+  nav.toc { position: static; max-height: none; margin-bottom: 8px; }
+  body { font-size: 16.5px; }
+}
+@media (prefers-reduced-motion: no-preference) { nav.toc a { transition: background .15s; } }
+</style>
+<div class="page">
+<nav class="toc" aria-label="Contents">
+  <div class="marque">Siby</div>
+  <div class="sous">User guide · version 1</div>
+  <ol>
+    <li><a href="#1-installing-siby">Installing Siby</a></li>
+    <li><a href="#2-the-main-window">The main window</a></li>
+    <li><a href="#3-databases">Databases</a></li>
+    <li><a href="#4-board-and-notation">Board and notation</a></li>
+    <li><a href="#5-engines">Engines</a></li>
+    <li><a href="#6-game-review">Game review</a></li>
+    <li><a href="#7-opening-library">Opening library</a></li>
+    <li><a href="#8-preparing-against-a-player">Preparing against a player</a></li>
+    <li><a href="#9-searching">Searching</a></li>
+    <li><a href="#10-playing-against-toby-or-an-alter-ego">Playing against Toby or an Alter Ego</a></li>
+    <li><a href="#11-live-broadcasts">Live broadcasts</a></li>
+    <li><a href="#12-training">Training</a></li>
+    <li><a href="#13-endgame-tablebases">Endgame tablebases</a></li>
+    <li><a href="#14-options">Options</a></li>
+    <li><a href="#15-keyboard-shortcuts">Keyboard shortcuts</a></li>
+    <li><a href="#16-where-siby-keeps-your-files">Where Siby keeps your files</a></li>
+  </ol>
+</nav>
+<article>
+<h1 id="siby-user-guide">Siby user guide</h1>
+<p>Version 1 (November 2026). Siby is a chess database and analysis
+program. It works with two companions:</p>
+<ul>
+<li><strong>Toby</strong>, a human-like engine: it predicts the moves a player of a
+  given rating would play, and plays like one;</li>
+<li><strong>Gaby</strong>, a large archive of games (about 11 million), used as the
+  reference database.</li>
+</ul>
+<p>This guide follows the order in which most people discover Siby:
+installing it, finding their way around the main window, then each
+task in turn (analysing, reviewing a game, preparing against someone,
+playing, following live games).</p>
+<figure><img alt="Siby's main window" src="img/01-main-window.png" loading="lazy"><figcaption>Siby's main window</figcaption></figure>
+<h2 id="contents">Contents</h2>
+<ol>
+<li><a href="#1-installing-siby">Installing Siby</a></li>
+<li><a href="#2-the-main-window">The main window</a></li>
+<li><a href="#3-databases">Databases</a></li>
+<li><a href="#4-board-and-notation">Board and notation</a></li>
+<li><a href="#5-engines">Engines</a></li>
+<li><a href="#6-game-review">Game review</a></li>
+<li><a href="#7-opening-library">Opening library</a></li>
+<li><a href="#8-preparing-against-a-player">Preparing against a player</a></li>
+<li><a href="#9-searching">Searching</a></li>
+<li><a href="#10-playing-against-toby-or-an-alter-ego">Playing against Toby or an Alter Ego</a></li>
+<li><a href="#11-live-broadcasts">Live broadcasts</a></li>
+<li><a href="#12-training">Training</a></li>
+<li><a href="#13-endgame-tablebases">Endgame tablebases</a></li>
+<li><a href="#14-options">Options</a></li>
+<li><a href="#15-keyboard-shortcuts">Keyboard shortcuts</a></li>
+<li><a href="#16-where-siby-keeps-your-files">Where Siby keeps your files</a></li>
+</ol>
+<hr />
+<h2 id="1-installing-siby">1. Installing Siby</h2>
+<h3 id="windows">Windows</h3>
+<ol>
+<li>Download <code>Siby-windows-x64.zip</code> and unzip it anywhere (for example
+   in <code>C:\Siby</code> or on a USB key: Siby is portable).</li>
+<li>Run <code>Siby.exe</code> in the <code>Siby</code> folder.</li>
+<li>On the first launch, Windows may show <em>Windows protected your PC</em>
+   (Siby is not signed yet): click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+</ol>
+<h3 id="linux">Linux</h3>
+<ol>
+<li>Download <code>Siby-linux-x64.tar.gz</code> and extract it.</li>
+<li>Run <code>./siby</code> in the extracted folder.</li>
+</ol>
+<h3 id="first-steps">First steps</h3>
+<ul>
+<li><strong>Gaby</strong>: on the first launch, <em>Tools › Gaby › Download Gaby</em> fetches
+  the archive (about 2 GB). It is then updated every day in the
+  background. Gaby is the reference database: the opening library, the
+  preparation and Alter Ego use it. A copy of Gaby that is not the
+  published version (put there by hand, for example) gets no daily
+  update until you choose: <strong>Download Gaby again</strong>, or <strong>Keep my copy</strong>
+  (the daily updates then apply to it).</li>
+<li><strong>Engines</strong>: <em>Tools › Engines…</em> downloads Stockfish (and Leela on
+  Windows) in one click, and adds Toby or any other engine from a file
+  (see <a href="#5-engines">Engines</a>).</li>
+<li><strong>Your profile</strong>: <em>Options › My profile…</em> takes your name as it is
+  written in your games, and your Lichess and Chess.com accounts. Siby
+  then knows which games are yours.</li>
+<li><strong>Language</strong>: <em>Options › Language</em> switches between English and
+  French.</li>
+</ul>
+<hr />
+<h2 id="2-the-main-window">2. The main window</h2>
+<h3 id="the-left-bar">The left bar</h3>
+<p>The narrow bar on the left switches between Siby's main views:</p>
+<div class="tableau"><table>
+<thead>
+<tr>
+<th>Icon</th>
+<th>View</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>»</td>
+<td>Unfolds the bar to show the names</td>
+</tr>
+<tr>
+<td>▤</td>
+<td><strong>My databases</strong>: every database as a tile</td>
+</tr>
+<tr>
+<td>⊞</td>
+<td><strong>Lab</strong>: board and engines, with two big tabs on the right: <em>Prepare against a player</em> and <em>Analysis</em></td>
+</tr>
+<tr>
+<td>●</td>
+<td><strong>Live broadcasts</strong> (Lichess)</td>
+</tr>
+<tr>
+<td>♞</td>
+<td><strong>Play</strong>: a click opens the Play window; a right click gives a menu</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="panels">Panels</h3>
+<p>Each part of the window (notation, engines, library, review…) is a
+panel. Panels can be moved by dragging their tab, placed side by side or
+in tabs, and closed with a right click on the tab. <em>Windows › Lab</em>
+brings back the Lab, and <em>Windows › My layouts</em> saves your own.</p>
+<h3 id="the-lab">The Lab</h3>
+<p>The Lab is where you work on the board. On the right, two big tabs:</p>
+<ul>
+<li><strong>Prepare against a player</strong> (see section 8);</li>
+<li><strong>Analysis</strong>: the opening library and tablebases above; the notation,
+  the game list and <em>My databases</em> below.</li>
+</ul>
+<p>Both pages stay ready: switching is instant, and each keeps its state
+(your preparation is still there when you come back from the analysis).</p>
+<h3 id="menus">Menus</h3>
+<div class="tableau"><table>
+<thead>
+<tr>
+<th>Menu</th>
+<th>What you find there</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>File</strong></td>
+<td>My databases, open, new database, close, padlock, recent files</td>
+</tr>
+<tr>
+<td><strong>Play</strong></td>
+<td>Play against Toby or an Alter Ego; play the board position; training</td>
+</tr>
+<tr>
+<td><strong>Edit</strong></td>
+<td>Undo and redo, copy and paste games and positions, board editor, variations</td>
+</tr>
+<tr>
+<td><strong>Game</strong></td>
+<td>New game, save, game information, game review, go to another game</td>
+</tr>
+<tr>
+<td><strong>Search</strong></td>
+<td>Games (player, event, years), partial position and material, moves, filter</td>
+</tr>
+<tr>
+<td><strong>Windows</strong></td>
+<td>Layouts, game list, notation, opening library, tablebases, live broadcasts</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td>Engines, preparation, opponents' online games, Gaby, database maintenance, import and export</td>
+</tr>
+<tr>
+<td><strong>Options</strong></td>
+<td>Profile, appearance, sounds, evaluation bars, language</td>
+</tr>
+<tr>
+<td><strong>Help</strong></td>
+<td>Help, thanks, about</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="3-databases">3. Databases</h2>
+<h3 id="my-databases">My databases</h3>
+<figure><img alt="My databases" src="img/04-my-databases.png" loading="lazy"><figcaption>My databases</figcaption></figure>
+<p><em>My databases</em> shows each database as a tile, with its number of games.
+A double click opens it. <em>Add a database…</em> adds an existing file
+(<code>.si4</code> or <code>.pgn</code>); <em>New database…</em> creates one.</p>
+<ul>
+<li><strong>Gaby</strong> (the star) is the reference database.</li>
+<li><strong>My Siby games</strong> keeps your games against Toby and the Alter Egos.</li>
+<li><strong>Siby live</strong> keeps the live games you save.</li>
+</ul>
+<p>A right click on a tile offers: open, close, search, make it the
+reference database, padlock, convert (to a Siby database or to PGN),
+clean (comments into variations), remove the tile, delete the database.</p>
+<p><strong>Padlock</strong>: a padlocked database cannot be changed by mistake. Gaby and
+the reference database are padlocked by default.</p>
+<p><strong>PGN files</strong> open directly and can be edited and saved in place.</p>
+<h3 id="the-game-list">The game list</h3>
+<figure><img alt="The game list" src="img/05-game-list.png" loading="lazy"><figcaption>The game list</figcaption></figure>
+<p>The game list (<em>Windows › Game list</em>, Ctrl+L) shows the games of the
+current database, or of the current search.</p>
+<ul>
+<li>A click on a column header sorts the list; a right click adds or
+  hides columns.</li>
+<li>A double click opens the game in a new notation tab.</li>
+<li><strong>Hovering over a game</strong> opens it on two lines across the list: its
+  row, and under it its next moves. Moving the pointer along the moves
+  shows each position on the board; <strong>Ctrl+wheel</strong> goes through them
+  move by move, the wheel still scrolls the list. A click on a move
+  opens the game there. The same works in the libraries' lists and in
+  <em>Prepare against a player</em>.</li>
+<li>A right click on a game: open, copy (PGN), copy to another database,
+  mark as deleted, flags, move up or down, hide from the list.</li>
+<li>Games can be dragged to reorder them, or onto another database tile
+  to copy them.</li>
+<li>The slider on the right scrolls through millions of games; a click
+  anywhere on it jumps there.</li>
+<li><strong>Board position</strong> shows only the games that reach the position on the
+  board, and follows the board as you play or move through a game. A
+  game opened from the list starts at that position.</li>
+<li>The time control buttons and the search box (<strong>Filter</strong>, or Enter)
+  narrow the list; <strong>Remove filter</strong> shows everything again. Board position
+  searches within the games shown (a search, a text, a time control).</li>
+<li><strong>Search…</strong> (Ctrl+Shift+F) opens the Search window: one window, in tabs
+  (Games, Position, Moves, Material and patterns), the database at the
+  top, the games found previewed on the right, and "Only within the games
+  shown" at the bottom for every tab.</li>
+</ul>
+<p>Next to the notation and the game list, the <strong>My databases</strong> tab lists
+your databases by name; a click on a column header sorts by games,
+status or folder. A double click opens a database, a right click gives
+the same menu as the tiles.</p>
+<hr />
+<h2 id="4-board-and-notation">4. Board and notation</h2>
+<h3 id="moving-pieces">Moving pieces</h3>
+<p>The board works as on Lichess: drag a piece or click it then click the
+target square. Dots show the possible moves, and the last move is
+tinted.</p>
+<ul>
+<li><strong>Right click</strong> on a square marks it; <strong>right drag</strong> draws an arrow:
+  green, red with Shift or Ctrl, blue with Alt, yellow with Alt+Shift.
+  A left click clears them.</li>
+<li><strong>f</strong> flips the board.</li>
+<li>When a move already exists in the game, Siby plays it as a variation
+  by default. Hold <strong>Ctrl</strong> while moving to choose (replace, new
+  variation, main line).</li>
+</ul>
+<h3 id="notation">Notation</h3>
+<figure><img alt="Notation with coloured moves" src="img/06-notation.png" loading="lazy"><figcaption>Notation with coloured moves</figcaption></figure>
+<p>The notation shows the game with its variations and comments. Moves
+with a symbol are coloured as on Lichess: <code>!!</code> dark green, <code>!</code> green,
+<code>!?</code> pink, <code>?!</code> blue, <code>?</code> orange, <code>??</code> red.</p>
+<ul>
+<li>A click on a move goes there.</li>
+<li>A right click on a move: copy the game or the position, move symbol,
+  evaluation, comment (Ctrl+A), promote or delete a variation, review
+  the line, delete the moves before or after, play this position
+  against Toby or an Alter Ego.</li>
+<li>Each game opens in its own <strong>tab</strong> above the notation. Ctrl+N opens a
+  new game in a new tab, Ctrl+W closes the tab, Tab and Shift+Tab go to
+  the next and previous tab. Tabs can be dragged to reorder them; when
+  they do not all fit, the wheel over them (or the ‹ › arrows) scrolls
+  them. The tabs inside a panel (those of <em>Prepare against a player</em>,
+  for example) can be dragged too.</li>
+<li><strong>Merge into the current game</strong> (right click on a game in a list):
+  the moves of the other game are added as variations, the main line
+  unchanged, and the game is quoted after its last move
+  (<em>White vs. Black, year</em>).</li>
+<li>Move times (<code>[%clk]</code>) can be shown next to the moves: <em>Options ›
+  Appearance › Move notation</em>.</li>
+</ul>
+<h3 id="game-information">Game information</h3>
+<p><em>Game › Game information…</em> edits the players, ratings, event, date and
+result.</p>
+<h3 id="board-editor">Board editor</h3>
+<p><em>Edit › Board editor…</em> (or <strong>s</strong>) sets up any position, as on Lichess:
+drag pieces from the palettes, choose the side to move and castling
+rights.</p>
+<figure><img alt="Board editor" src="img/07-board-editor.png" loading="lazy"><figcaption>Board editor</figcaption></figure>
+<hr />
+<h2 id="5-engines">5. Engines</h2>
+<h3 id="adding-engines">Adding engines</h3>
+<figure><img alt="Engines window" src="img/08-engines.png" loading="lazy"><figcaption>Engines window</figcaption></figure>
+<p><em>Tools › Engines…</em> lists <strong>your engines</strong> at the top: their order gives
+the shortcuts (the first starts with F2, the second with F3, up to F9),
+and the arrows change it.</p>
+<p>Below, <strong>Add an engine</strong> offers Toby, Stockfish and Leela (Lc0):
+<em>Download</em> fetches and sets up the engine in one click (Stockfish; Leela
+on Windows), and <em>Choose a file…</em> adds an engine already on your
+computer. <em>Other engine</em> adds any UCI engine.</p>
+<h3 id="analysis-panels">Analysis panels</h3>
+<figure><img alt="Stockfish 19 and Toby side by side, before Nihal Sarin's 37...Nf5?? (Yakubboev–Nihal Sarin, Olympiad 2026)" src="img/09-engines-panels.png" loading="lazy"><figcaption>Stockfish 19 and Toby side by side, before Nihal Sarin's 37...Nf5?? (Yakubboev–Nihal Sarin, Olympiad 2026)</figcaption></figure>
+<p>F2 starts the first engine, F3 the second, and so on. Each engine has
+its own panel:</p>
+<ul>
+<li>the evaluation, depth and speed, then the best lines;</li>
+<li><strong>W/D/L</strong> (win, draw, loss) when the engine gives it;</li>
+<li>a click on a line plays its first move; a right click inserts the
+  line or all the lines into the notation;</li>
+<li>the pause button stops the engine; the padlock keeps it on the
+  current position while you browse the game;</li>
+<li>a red dot (⚠) warns of the opponent's threat, as on Lichess.</li>
+</ul>
+<p><strong>Space</strong> plays the best move of the left panel, <strong>Shift+Space</strong> the
+best move of the right panel.</p>
+<h3 id="evaluation-bars">Evaluation bars</h3>
+<figure><img alt="Evaluation bars" src="img/10-eval-bars.png" loading="lazy"><figcaption>Evaluation bars</figcaption></figure>
+<p>The bars beside the board show each engine's evaluation, converted into
+winning chances as on Lichess (so that +1 near equality moves the bar
+more than +1 in a won position). For Toby, the bar shows its own
+win/draw/loss proportions. A right click on a bar chooses its display
+and place.</p>
+<h3 id="toby">Toby</h3>
+<figure><img alt="Toby's panel" src="img/11-toby.png" loading="lazy"><figcaption>Toby's panel</figcaption></figure>
+<p><em>Yakubboev–Nihal Sarin, 46th Olympiad 2026, before 37...Nf5?? (above).
+Stockfish 19 sees a draw. Toby, set to <strong>This game</strong> (2685 against
+2718), expects 37...Kf6 most often (52.3 %) and gives 37...Nf5 21 %:
+after it, White wins 85 % of the time.</em></p>
+<p>Toby does not look for the best move: it shows, for each move, <strong>the
+probability that a player of the chosen rating plays it</strong>, and the
+win/draw/loss outcome of that move between players of those ratings.
+Its expected score (Exp.) is the score a player of that rating can
+expect after the move.</p>
+<ul>
+<li><strong>Fixed Elo</strong>: Toby uses the ratings you choose in its settings
+  (2300 classical by default). <strong>This game</strong>: it uses the ratings in the
+  game's header.</li>
+<li>The settings (gear icon) choose the rating list (FIDE, Lichess,
+  Chess.com), the time control and the precision.</li>
+</ul>
+<hr />
+<h2 id="6-game-review">6. Game review</h2>
+<figure><img alt="Game review" src="img/12-review.png" loading="lazy"><figcaption>Game review</figcaption></figure>
+<p><em>The review of the same game: Nihal Sarin's two blunders, 36...Kxg5??
+and 37...Nf5??, turn the curve over in a few moves.</em></p>
+<p><em>Game › Game review</em> (also at the end of a game against Toby, and in
+live broadcasts) analyses the whole game:</p>
+<ul>
+<li><strong>Level of play</strong>: an estimate of the rating each side played at,
+  from Toby's probabilities. Above 2900 it shows <strong>2900+</strong>: Toby learned
+  from human games, and it cannot tell levels apart beyond that.</li>
+<li><strong>Accuracy</strong> and the number of brilliant moves (<code>!!</code>), good moves
+  (<code>!</code>), inaccuracies (<code>?!</code>), mistakes (<code>?</code>) and blunders (<code>??</code>) of
+  each side. A click on a number goes through those moves.</li>
+<li><strong>Symbols and variations</strong> are written into the game: for each
+  mistake, the line that should have been played, as long as it stays
+  forced.</li>
+<li><strong>The curve</strong> shows White's expected score move by move, as on
+  Lichess, with the opening, middlegame and endgame. Hovering over it
+  shows the position; a click goes there.</li>
+<li>With move times, orange and red strips under the curve show time
+  trouble.</li>
+</ul>
+<p>How Siby judges a move: in <strong>expected score</strong>, at the players' rating,
+never in raw centipawns. Losing 10 expected-score points is a mistake
+(<code>?</code>), 15 a blunder (<code>??</code>). A good move (<code>!</code>) is an only good move that
+players of that level rarely find. A <strong>sound sacrifice</strong> gets <code>!!</code> when
+it gives up 5 points of material or more, <code>!</code> otherwise, and <code>!!</code> too
+when players of that level would play it less than 10 % of the time
+(a necessary underpromotion counts as a sacrifice). No symbol when the
+position stays totally winning anyway.</p>
+<p>The review is saved with the game: evaluations in the moves, levels in
+the header.</p>
+<hr />
+<h2 id="7-opening-library">7. Opening library</h2>
+<figure><img alt="Opening library" src="img/13-library.png" loading="lazy"><figcaption>Opening library</figcaption></figure>
+<p>The opening library (<em>Windows › Opening library</em>) shows, for the board
+position, the moves played in the reference database: number of games,
+White / draws / Black results, average rating, last time played. It
+follows the board instantly, even on Gaby.</p>
+<ul>
+<li>A click on a move plays it; hovering over it shows an arrow.</li>
+<li>Two views: <strong>Bars</strong> (one White / draw / Black bar per move, as on
+  Lichess) or <strong>Table</strong>. A click on a column header sorts it.</li>
+<li>The <strong>Cloud</strong> column gives the evaluation of Lichess's cloud for each
+  move.</li>
+<li>The <strong>best games in this position</strong> are listed under the moves; a
+  click opens one.</li>
+</ul>
+<hr />
+<h2 id="8-preparing-against-a-player">8. Preparing against a player</h2>
+<figure><img alt="Preparation: the profile" src="img/14-prep.png" loading="lazy"><figcaption>Preparation: the profile</figcaption></figure>
+<p>The Lab's <em>Prepare against a player</em> tab (or <em>Tools › Prepare against a
+player…</em>) gathers everything
+about an opponent.</p>
+<ol>
+<li><strong>Player</strong>: type the first letters of the name and pick it in the
+   list.</li>
+<li><strong>Database 1</strong>: where their games are (Gaby by default). What is
+   generally played ("All games") always comes from the reference
+   database (Gaby by default, or the one chosen in <em>My databases</em>).</li>
+<li><strong>Filters</strong>: since year, minimum opponent rating, time control
+   (classical, rapid, blitz, correspondence, all).</li>
+<li><strong>Online</strong>: their Lichess and Chess.com accounts. <em>Download their
+   games</em> fetches them, and <em>Their games</em> chooses between the database,
+   Lichess, Chess.com or all.</li>
+</ol>
+<p>The tabs:</p>
+<ul>
+<li><strong>Profile</strong>: photo, FIDE rating and history, peak, rating curve,
+  performance, openings.</li>
+<li><strong>Library</strong>: their moves in the board position. Their results, how
+  much they <strong>overperform</strong> their rating with each move, and when they
+  last played it. Moves not played for five years are greyed. On the
+  right, the reference database's statistics for the same moves; the
+  moves the player has that the reference never has are in orange.</li>
+<li><strong>Tree as White / Tree as Black</strong>: their whole repertoire.</li>
+<li><strong>Games</strong>: their games in the position; a click opens one.</li>
+</ul>
+<figure><img alt="Preparation: Carlsen's moves as White (left) and what is played in Gaby, the reference (right)" src="img/15-prep-table.png" loading="lazy"><figcaption>Preparation: Carlsen's moves as White (left) and what is played in Gaby, the reference (right)</figcaption></figure>
+<hr />
+<h2 id="9-searching">9. Searching</h2>
+<p><em>Search › Games…</em> finds games by player, event, years, ratings or result.
+<em>Search › Partial position and material…</em> finds positions with given
+pieces on given squares, or a given material balance (for example
+bishops of opposite colours). <em>Search › Moves…</em> finds games where given
+moves were played, in any order.</p>
+<figure><img alt="Search results: the Greek gift (Bxh7+ Kxh7 Ng5+), 8,402 games in Gaby" src="img/16-search-results.png" loading="lazy"><figcaption>Search results: the Greek gift (Bxh7+ Kxh7 Ng5+), 8,402 games in Gaby</figcaption></figure>
+<p>Results open in the <strong>Search results</strong> panel: each game with the move
+found; hovering over it shows the position; a click opens the game.</p>
+<p>The search keeps a <strong>filter</strong> on the database: the game list then shows
+only the games found. <em>Search › Show all games</em> (Ctrl+R) removes it.</p>
+<hr />
+<h2 id="10-playing-against-toby-or-an-alter-ego">10. Playing against Toby or an Alter Ego</h2>
+<figure><img alt="Play window: Alter Ego against Capablanca at his peak (1919, estimated level 2646)" src="img/17-play.png" loading="lazy"><figcaption>Play window: Alter Ego against Capablanca at his peak (1919, estimated level 2646)</figcaption></figure>
+<p>The ♞ icon (or <em>Play › Play against Toby…</em>) opens the Play window.</p>
+<h3 id="opponents">Opponents</h3>
+<ul>
+<li><strong>Toby</strong>: a generic human at the rating you choose (up to 2900).</li>
+<li><strong>Alter Ego</strong>: a specific player from your database, in their prime,
+  today, or at a given age. Their own opening moves come from their
+  games; once out of their repertoire, Toby plays at their estimated
+  classical level.</li>
+</ul>
+<h3 id="settings">Settings</h3>
+<ul>
+<li><strong>Time control</strong>: one click on a preset, or <em>Custom</em>.</li>
+<li><strong>Levels</strong>: Toby's level and your rating, with the rating list.</li>
+<li><strong>Start</strong>:</li>
+<li><em>Initial position</em> or <em>Board position</em>;</li>
+<li><em>Set up a position…</em> opens the board editor.</li>
+<li>No evaluation is shown during the game (as on Lichess).</li>
+<li>One click on a king (White, random, Black) <strong>starts the game</strong>.</li>
+</ul>
+<h3 id="during-the-game">During the game</h3>
+<figure><img alt="A game against Alter Ego Capablanca 1919, 15+10" src="img/19-game.png" loading="lazy"><figcaption>A game against Alter Ego Capablanca 1919, 15+10</figcaption></figure>
+<p>Clocks, premoves, promotion and resign work as on Lichess. At the end:
+<strong>Rematch</strong>, <strong>New opponent</strong>, <strong>Analysis board</strong> or <strong>Game review</strong>.
+Every game is saved in <em>My Siby games</em>.</p>
+<hr />
+<h2 id="11-live-broadcasts">11. Live broadcasts</h2>
+<figure><img alt="Live broadcasts" src="img/20-live.png" loading="lazy"><figcaption>Live broadcasts</figcaption></figure>
+<p>The ● view follows the broadcasts of Lichess: tournaments live now,
+upcoming and finished, with a search by tournament or player.</p>
+<ul>
+<li>A click on a tournament shows its rounds and games; a click on a game
+  follows it live, with the clocks. If the game on the board was changed
+  and not saved, the broadcast game opens in a new tab: nothing is lost,
+  nothing is asked.</li>
+<li><em>Back to live</em> returns to the current move after browsing.</li>
+<li><em>Save</em> keeps the game (or the whole round) in <em>Siby live</em> or another
+  database.</li>
+<li><em>Review</em> runs the game review on the game so far.</li>
+</ul>
+<hr />
+<h2 id="12-training">12. Training</h2>
+<ul>
+<li><strong>Review the line</strong> (right click in the notation, or <em>Play ›
+  Training</em>): you play one side of the line in the notation; Siby plays
+  the other side and tells you when you leave the line.</li>
+<li><strong>Repertoire</strong> (<em>Play › Training › Repertoire</em>): spaced repetition of
+  your repertoire, as with flashcards.</li>
+</ul>
+<hr />
+<h2 id="13-endgame-tablebases">13. Endgame tablebases</h2>
+<p><em>Windows › Tablebases</em> shows, from 7 pieces down, the result of the
+position and of each move, from Lichess's online tablebase or from your
+own Syzygy files (<em>Options › Folders and files › Endgame tablebases…</em>).</p>
+<figure><img alt="Tablebases" src="img/21-tablebases.png" loading="lazy"><figcaption>Tablebases</figcaption></figure>
+<hr />
+<h2 id="14-options">14. Options</h2>
+<ul>
+<li><strong>My profile</strong>: your name, accounts and repertoire files.</li>
+<li><strong>Appearance</strong>: dark or light theme, board colours, pieces,
+  coordinates, move notation (figurines or letters), last-move tint,
+  move dots, engine arrows.</li>
+<li><strong>Sounds</strong>: turn the sounds on or off.</li>
+<li><strong>Evaluation bars</strong>: which engines, display, place.</li>
+<li><strong>Language</strong>: English or French.</li>
+<li><strong>Full screen</strong>: F11 from the menu.</li>
+</ul>
+<hr />
+<h2 id="15-keyboard-shortcuts">15. Keyboard shortcuts</h2>
+<div class="tableau"><table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="touches">← →</td>
+<td>Previous / next move (anywhere, except while typing in a field)</td>
+</tr>
+<tr>
+<td class="touches">↑ ↓ (or Home, End)</td>
+<td>Start / end of the game</td>
+</tr>
+<tr>
+<td class="touches">h l k j</td>
+<td>Previous move, next move, start, end (as on Lichess)</td>
+</tr>
+<tr>
+<td class="touches">f</td>
+<td>Flip the board</td>
+</tr>
+<tr>
+<td class="touches">s</td>
+<td>Board editor</td>
+</tr>
+<tr>
+<td class="touches">d</td>
+<td>Comment on the move</td>
+</tr>
+<tr>
+<td class="touches">Space / Shift+Space</td>
+<td>Play the best move of the left / right engine panel</td>
+</tr>
+<tr>
+<td class="touches">F2 … F9</td>
+<td>Start engine 1 … 8</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+N</td>
+<td>New game in a new tab</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+W</td>
+<td>Close the tab</td>
+</tr>
+<tr>
+<td class="touches">Tab / Shift+Tab</td>
+<td>Next / previous tab</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+S</td>
+<td>Save the game</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+Shift+S</td>
+<td>Save in another database</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+Z / Ctrl+Y</td>
+<td>Undo / redo</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+C / Ctrl+Shift+C</td>
+<td>Copy the game (PGN) / the position (FEN)</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+V</td>
+<td>Paste a game or a position</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+A</td>
+<td>Comment on the move</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+Alt+0</td>
+<td>Null move (<code>--</code> in PGN), as in ChessBase</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+L</td>
+<td>Game list</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+K</td>
+<td>Choose a panel</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+O</td>
+<td>Open a database</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+R</td>
+<td>Show all games (remove the filter)</td>
+</tr>
+<tr>
+<td class="touches">F11 / Shift+F11</td>
+<td>Next / previous game of the list</td>
+</tr>
+<tr>
+<td class="touches">Alt+1 … 9</td>
+<td>Switch database</td>
+</tr>
+<tr>
+<td class="touches">Ctrl+Q</td>
+<td>Quit</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="16-where-siby-keeps-your-files">16. Where Siby keeps your files</h2>
+<p>Everything personal is in <strong>Documents\Siby</strong> on Windows, and in
+<strong>~/Documents/Siby</strong> on Linux (settings in <code>~/.scidvspc</code>):</p>
+<ul>
+<li><strong>Gaby</strong> (the reference database and its library files);</li>
+<li><strong>Siby games</strong> (your games against Toby and the Alter Egos);</li>
+<li><strong>Siby live</strong> (saved live games);</li>
+<li>your settings, engines, photos and pieces.</li>
+</ul>
+<p>A new version of Siby finds them there: nothing is replaced or
+duplicated when you install it again.</p>
+<hr />
+<p><em>Siby is free software (GNU GPL v2). See Help › Thanks for the
+projects it builds on.</em></p>
+</article>
+</div>

@@ -1,0 +1,35 @@
+# Builds the Windows package from the public sources (MinGW-w64 on Ubuntu,
+# as outils/windows/construire.sh does locally), then hands it to SignPath
+# for signing. The SignPath step needs the organisation id, project and
+# policy slugs, and the API token as a repository secret, all given by
+# SignPath once the project is accepted: until then it is commented out.
+name: Windows package
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 zip
+      - name: Build
+        run: bash outils/windows/construire.sh "$RUNNER_TEMP/bw"
+      - name: Unsigned package
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Siby-windows-x64
+          path: dist/Siby-windows-x64.zip
+      # - name: Sign (SignPath)
+      #   uses: signpath/github-action-submit-signing-request@v1
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: '<from SignPath>'
+      #     project-slug: 'Siby'
+      #     signing-policy-slug: 'release-signing'
+      #     github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: signed

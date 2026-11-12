@@ -1,0 +1,5 @@
+build-install/
+build-windows/
+build-linux/
+dist/
+*.o

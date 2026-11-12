@@ -1,0 +1,7 @@
+Siby's move and capture sounds are in the public domain (CC0 1.0):
+you may copy, modify and use them for anything, without asking.
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The game sounds (bois_debut.wav at the start, bois_victoire.wav,
+bois_defaite.wav and bois_nulle.wav at the end) were made for Siby (short
+mallet-like tones, ffmpeg) and are in the public domain too (CC0 1.0).
