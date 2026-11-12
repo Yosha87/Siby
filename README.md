@@ -76,4 +76,4 @@ authors, is in [scidvspc/THIRD_PARTY.md](scidvspc/THIRD_PARTY.md) and in
 Siby's Help › Thanks.
 
 © 2026 Yosha Iglesias · [tribychess.org](https://tribychess.org/) ·
-[Support Triby](https://tribychess.org/support/)
+[Support Triby](https://tribychess.org/support/index.html)
