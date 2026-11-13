@@ -50,6 +50,7 @@ proc ::moderne::bilan::placerOnglet {} {
     if {$src ne {} && [winfo exists $src]} { catch {$src forget $d} }
     catch {place forget $d}
     if {[catch {$nb add $d -text [T "Bilan" "Review"]}]} { catch {$nb select $d} }
+    catch {$nb select $d}
     catch {raise $d}
   }
   # (the notation borrowed: the page of its group shown, the notation goes
@@ -1109,10 +1110,28 @@ proc ::moderne::bilan::zeitnot {} {
 }
 
 ### Level of play and progress
+### While the review runs: its tab still next to the notation, put back
+### there otherwise (and written to siby.log, with where it was). Yosha
+### 2026-11-13, beta 3, real engines: a review started from the game list
+### ended in Stockfish's group, with no line in siby.log at the start: moved
+### afterwards. Not while the preparation borrows the notation (that would
+### switch pages under the user's feet); at most once a second
+proc ::moderne::bilan::verifierPlace {} {
+  variable dernierControle
+  set t [clock milliseconds]
+  if {[info exists dernierControle] && $t - $dernierControle < 1000} { return }
+  set dernierControle $t
+  if {!$::docking::USE_DOCKING || ![winfo exists .fdockbilanWin]} { return }
+  set g [groupeNotation]
+  if {$g eq {} || [lindex $g 1]} { return }
+  if {[::docking::find_tbn .fdockbilanWin] ne [lindex $g 0]} { placerOnglet }
+}
+
 proc ::moderne::bilan::maj {} {
   variable w
   variable cle
   if {![winfo exists $w]} { return }
+  catch verifierPlace
   set f $w.f
   set reste 0
   # annotation progress (phases of oracle.tcl)
