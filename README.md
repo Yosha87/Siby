@@ -26,11 +26,13 @@ Free · Open source · No ads
 - **Opening library.** The moves played in the board's position, over the
   whole of Gaby, instantly: how often, how they score, the players'
   average rating, the Lichess cloud evaluation, and the best games.
-- **Game review.** Toby estimates each player's rating from the moves
-  alone, not from their rating. And Siby annotates like a human: !! can go
-  to a great sacrifice, or a great, hard-to-spot move.
-- **Powerful and fast search.** Search Gaby by player, moves, position,
-  pawn structure or material, alone or combined.
+- **Game review.** Toby tells you at what level each player really played,
+  and annotates like a human: !! can go to a great sacrifice, or a great,
+  hard-to-spot move.
+- **Powerful and fast search.** Search Gaby on any criteria, combined as
+  you like: players and opponents, ratings, events, years, time controls,
+  openings, moves, text, exact or partial positions, material, patterns,
+  pawn structures.
 - **Live games.** The tournaments broadcast on Lichess, with the clocks and
   the analysis of every game while it is played, and Toby's chances for
   each player.
