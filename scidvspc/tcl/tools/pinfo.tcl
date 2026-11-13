@@ -103,7 +103,7 @@ proc playerInfo {{player ""} {raise 0}} {
 
     pack $w.frame -side top -fill both -expand yes
     ::htext::init $w.text
-    bind $w <Escape> "focus .main ; destroy $w"
+    bind $w <Escape> [list ::moderne::echap $w]
     bind $w <F1> {helpWindow PInfo}
     standardShortcuts $w
     bindWheeltoFont $w

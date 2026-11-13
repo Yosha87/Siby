@@ -108,7 +108,7 @@ proc ::tree::Open {{baseNumber 0}} {
   bind $w <F1> {helpWindow Tree}
   bind $w <Escape> "
      if {!\[::tree::hideCtxtMenu $baseNumber\]} {
-      $w.buttons.close invoke
+      ::moderne::echap $w
      }"
 
   # Bind left button to close ctxt menu:
@@ -1257,7 +1257,7 @@ proc ::tree::best {baseNumber} {
     ::setTitle $w "$::tr(TreeBestGames) \[[file tail [sc_base filename $baseNumber]]\]"
     setWinLocation $w
     setWinSize $w
-    bind $w <Escape> "destroy $w"
+    bind $w <Escape> [list ::moderne::echap $w]
     bind $w <F1> {helpWindow Tree Best}
     bindWheeltoFixed $w
     pack [frame $w.b] -side bottom -fill x

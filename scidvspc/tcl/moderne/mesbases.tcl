@@ -1450,7 +1450,7 @@ proc ::moderne::mesbases::reference {f} {
 ### Clean PGN window ("All games of the database").
 proc ::moderne::mesbases::nettoyer {f} {
   variable w
-  set p [expr {[winfo exists $w] ? $w : "."}]
+  set p [::moderne::mesbases::parent]
   if {[estPgn $f]} {
     set racine [file rootname $f]
     if {[string match -nocase *.pgn.gz $f]} { set racine [file rootname $racine] }
@@ -1494,29 +1494,67 @@ proc ::moderne::mesbases::nettoyer {f} {
   catch {wm title .cleanpgnWin "[T "Nettoyer" "Clean"] : [file tail [file rootname $f]]"}
 }
 
+### The window a dialog is attached to: My databases when it is on screen,
+### else the main window. (The tile view's window exists but is hidden while
+### the list view is shown: on Windows a dialog attached to it stayed
+### invisible, « Add a database… » seemed to do nothing, Yosha 2026-11-13)
+proc ::moderne::mesbases::parent {} {
+  variable w
+  if {[winfo exists $w] && [winfo viewable $w]} { return $w }
+  set f [focus]
+  if {$f ne {} && [winfo exists $f] && [winfo viewable $f]} { return [winfo toplevel $f] }
+  return .
+}
+
 ### Add a database… (several at once with Ctrl or Shift; dossier: put in
 ### that folder, Yosha 2026-11-05)
 proc ::moderne::mesbases::ajouter {{dossier {}}} {
   variable w
-  set fs [tk_getOpenFile -multiple 1 -parent [expr {[winfo exists $w] ? $w : "."}] -filetypes [list \
+  set fs [tk_getOpenFile -multiple 1 -parent [::moderne::mesbases::parent] -filetypes [list \
       [list [T "Bases Siby et PGN" "Siby and PGN databases"] {.si4 .pgn .PGN}] \
       [list [T "Bases Siby" "Siby databases"] {.si4}] [list PGN {.pgn .PGN}]]]
   if {![llength $fs]} { return }
   ajouterFichiers $fs $dossier
 }
 
+namespace eval ::moderne::mesbases { variable ajouts {} ; variable nAjouts 0 }
+
 ### Files fs added (into folder dossier when given)
 proc ::moderne::mesbases::ajouterFichiers {fs {dossier {}}} {
   variable groupes
+  variable ajouts
+  # (first in their folder, whatever the sort, Yosha 2026-11-13: the last
+  # added first, those added together in their order)
+  set lot [incr ::moderne::mesbases::nAjouts]
+  set i 0
   foreach f $fs {
     set f [chemin $f]
+    dict set ajouts $f [expr {$lot * 100000 - [incr i]}]
     if {$f ni $::moderne::mesBases} { lappend ::moderne::mesBases $f }
     set ::moderne::basesRetirees [lsearch -all -inline -not -exact $::moderne::basesRetirees $f]
     if {$dossier ne {}} { dict set groupes $f $dossier }
   }
   if {$dossier ne {}} { creerDossier $dossier 0 }
+  # (the folders holding them unfolded: added into a folded « Other
+  # databases », or already there, nothing seemed to happen, Yosha
+  # 2026-11-13)
+  catch {deplierPour [lmap f $fs {chemin $f}]}
   remplir
+  # (and scrolled to: a folder lower down stayed out of sight)
+  if {[llength $fs]} { after idle [list after 0 [list catch [list ::moderne::mesbases::montrer [chemin [lindex $fs end]]]]] }
   catch ::options.write
+}
+
+### The folders (and their parents) holding databases fs unfolded
+proc ::moderne::mesbases::deplierPour {fs} {
+  variable replies
+  foreach f $fs {
+    set sec [groupe $f]
+    if {$sec eq {}} { set sec [T "Autres bases" "Other databases"] }
+    set replies [lsearch -all -inline -not -exact $replies $sec]
+    # (a folder inside a folded one: its parents too)
+    foreach r $replies { if {[string first "$r / " $sec] == 0} { set replies [lsearch -all -inline -not -exact $replies $r] } }
+  }
 }
 
 proc ::moderne::mesbases::retirer {f} {
@@ -1542,7 +1580,7 @@ proc ::moderne::mesbases::supprimer {f} {
   variable w
   set nom [file rootname [::moderne::nomBase $f]]
   if {[cadenassee $f]} {
-    tk_messageBox -parent [expr {[winfo exists $w] ? $w : "."}] -icon info -type ok -title Siby -message [T \
+    tk_messageBox -parent [::moderne::mesbases::parent] -icon info -type ok -title Siby -message [T \
         "« $nom » est cadenassée : lève le cadenas (clic droit) avant de la supprimer." \
         "\"$nom\" is padlocked: remove the padlock (right-click) before deleting it."]
     return
@@ -1554,7 +1592,7 @@ proc ::moderne::mesbases::supprimer {f} {
   if {$f eq $gaby} {
     append msg "\n\n" [T "C'est Gaby : il faudra la retélécharger (Outils › Gaby)." "This is Gaby: it will have to be downloaded again (Tools › Gaby)."]
   }
-  if {[tk_messageBox -parent [expr {[winfo exists $w] ? $w : "."}] -icon warning -type yesno -default no -title Siby -message $msg] ne "yes"} { return }
+  if {[tk_messageBox -parent [::moderne::mesbases::parent] -icon warning -type yesno -default no -title Siby -message $msg] ne "yes"} { return }
   set b [slot $f]
   if {$b} { catch {::file::Close $b} }
   if {[slot $f]} { return }
@@ -1962,6 +2000,7 @@ proc ::moderne::mesbases::nbPourTri {f} {
 proc ::moderne::mesbases::ordre {gaby ref} {
   variable tri
   variable ouvertures
+  variable ajouts
   set tous [liste]
   set mesParties [chemin [file join $::sibyDocsDir "Siby games"].si4]
   set tete {}
@@ -1980,6 +2019,8 @@ proc ::moderne::mesbases::ordre {gaby ref} {
       taille { set k [expr {-[nbPourTri $f]}] }
       default { set k [expr {[dict exists $ouvertures $f] ? -[dict get $ouvertures $f] : 0}] }
     }
+    # (added in this session: first, the last added at the top)
+    if {[dict exists $ajouts $f]} { set k [expr {-(1 << 50) - [dict get $ajouts $f]}] }
     lappend cles [list $k $nom $f]
   }
   set cles [lsort -index 1 -dictionary $cles]
@@ -2294,7 +2335,7 @@ proc ::moderne::mesbases::ajouterDossierDisque {{dans {}} {rep {}}} {
   variable w
   variable suivis
   if {$rep eq {}} {
-    set rep [tk_chooseDirectory -parent [expr {[winfo exists $w] ? $w : "."}] -mustexist 1 \
+    set rep [tk_chooseDirectory -parent [::moderne::mesbases::parent] -mustexist 1 \
         -title [T "Ajouter un dossier de l'ordinateur" "Add a folder from the computer"]]
   }
   if {$rep eq {} || ![file isdirectory $rep]} { return }

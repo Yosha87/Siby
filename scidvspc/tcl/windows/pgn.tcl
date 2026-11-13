@@ -234,9 +234,13 @@ namespace eval pgn {
       if {[winfo exists .pgnWin.text.ctxtMenu]} {
         destroy .pgnWin.text.ctxtMenu
         focus .pgnWin
-      } else {
+      } elseif {!$::docking::USE_DOCKING} {
         focus .main
         destroy .pgnWin
+      } else {
+        # (Siby: a tab, not a window: Escape no longer destroys it, the
+        # Notation tab went missing, Yosha 2026-11-13)
+        focus .main
       }
     }
     standardShortcuts $w

@@ -17,7 +17,7 @@ set scidVersionDate {May 20, 2026}
 # Siby's own version, the one shown to users (beta until the 1.0
 # release); scidVersion above is the internal version of the database
 # engine (checked against sc_info version), never shown
-set sibyVersion "1.0 beta 4"
+set sibyVersion "1.0 beta 5"
 
 package require Tcl 8.5
 package require Tk  8.5
@@ -2031,6 +2031,12 @@ if {[catch {source $optionsFile} ]} {
 } else {
   ::splash::add "Loaded options from \"$optionsFile\"."
 }
+
+### Siby: English and the dark theme only (Yosha 2026-11-13: the light theme
+### and the French interface are not up to the mark yet; a choice saved
+### before is overridden). SIBY_LANG still sets the language for the tests.
+if {![info exists ::env(SIBY_LANG)]} { set language E }
+if {[info exists ::moderne::theme] && $::moderne::theme eq "clair"} { set ::moderne::theme sombre }
 
 ### Siby: the variation arrows turned off and the choice of the move turned
 ### on, once for everyone (options saved before 2026-10-27 still had SCID's

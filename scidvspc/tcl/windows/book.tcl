@@ -227,7 +227,7 @@ namespace eval book {
     bind $w.main.combo1 <<ComboboxSelected>> {::book::bookSelect}
     bind $w.main.combo2 <<ComboboxSelected>> {::book::bookSelect}
     bind $w <Destroy> "::book::closeMainBook"
-    bind $w <Escape> {destroy .bookWin}
+    bind $w <Escape> [list ::moderne::echap $w]
     bind $w <Left> ::move::Back
     bind $w <Right> ::move::Forward
 

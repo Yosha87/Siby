@@ -520,7 +520,7 @@ proc ::moderne::prepa::ouvrir {} {
   ::moderne::suggestions::attacher $h.joueur ::moderne::prepa::suggestions ::moderne::prepa::joueurChoisi 1
   bind $h.joueur <<ComboboxSelected>> {::moderne::prepa::nomChoisi}
   bind $h.joueur <Return> {::moderne::prepa::lancer}
-  bind $w <Escape> [list destroy $w]
+  bind $w <Escape> [list ::moderne::echap $w]
 
   catch {::moderne::repeindre $w}
   ::createToplevelFinalize $w

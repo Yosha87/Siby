@@ -2616,7 +2616,7 @@ proc makeAnalysisWin {{n 0} {options {}}} {
       by moving backward or forward or making a new move.)"
   $w.text configure -state disabled
   bind $w <Destroy> "if {\"%W\" == \"$w\"} {destroyAnalysisWin $n}"
-  bind $w <Escape> "focus .main ; destroy $w"
+  bind $w <Escape> [list ::moderne::echap $w]
   # (Siby: window closed while it was being built: the engine is stopped)
   if {![winfo exists $w]} {
     catch {destroyAnalysisWin $n}

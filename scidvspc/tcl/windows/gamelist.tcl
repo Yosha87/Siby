@@ -317,7 +317,8 @@ proc ::windows::gamelist::Open {} {
     }
   }
   bind $w <Control-Key-quoteleft> {::file::SwitchToBase 9}
-  bind $w <Escape> "destroy $w"
+  # (Siby: a tab, not a window: Escape no longer destroys it)
+  bind $w <Escape> [list apply {{w} { if {!$::docking::USE_DOCKING} { destroy $w } else { focus .main } }} $w]
 
   set ::windows::gamelist::isOpen 1
 

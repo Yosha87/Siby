@@ -264,7 +264,7 @@ proc ::tb::Open {} {
   pack $w.b.random -side left -padx 8 -pady 2
   pack $w.b.status -side left -fill x -expand yes
   bind $w <Destroy> {set tbTraining 0}
-  bind $w <Escape> "destroy $w"
+  bind $w <Escape> [list ::moderne::echap $w]
   bind $w <F1> {helpWindow TB}
   bind $w <Configure> "recordWinSize $w"
   wm minsize $w 15 15

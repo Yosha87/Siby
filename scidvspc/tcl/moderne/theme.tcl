@@ -779,6 +779,15 @@ proc ::moderne::libelleDrapeau {desc} {
   return $d
 }
 
+### Escape in window w: a separate window closed, a tab left as it is (it
+### closed the Notation, the library, the preparation, its group vanished,
+### Yosha 2026-11-13)
+proc ::moderne::echap {w} {
+  if {![winfo exists $w]} { return }
+  if {$::docking::USE_DOCKING && [winfo exists .fdock[string range $w 1 end]]} { focus .main ; return }
+  destroy $w
+}
+
 proc ::moderne::tr {fr en} {
   if {[info exists ::language] && $::language eq "F"} { return $fr }
   return $en
@@ -821,13 +830,7 @@ proc ::moderne::notice {w titre texte fichier libelle commande {fermer {}}} {
 
 ### Siby theme entries at the top of the Options > Appearance menu
 proc ::moderne::menuTheme {m} {
-  foreach {val fr en} {
-    sombre    "Thème sombre (Siby)"               "Dark theme (Siby)"
-    clair     "Thème clair (Siby)"                "Light theme (Siby)"
-  } {
-    $m add radiobutton -label [::moderne::tr $fr $en] -value $val \
-        -variable ::moderne::theme -command ::moderne::changerTheme
-  }
+  # (the dark theme only, Yosha 2026-11-13: no choice offered)
   catch {::moderne::echiquier::menu $m}
   # (default set here: the menu entry would otherwise create it at 0)
   if {![info exists ::moderne::navVisible]} { set ::moderne::navVisible 1 }

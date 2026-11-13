@@ -312,7 +312,6 @@ proc ::moderne::menubar::description {nom} {
         {copie .menu.options.evalbar "Barres d'évaluation" "Evaluation bars" {::gameInfo(showEval) ::gbrowser::showEval ::fics::showEval ::evalTicks ::evalUseLog label:Échelle label:Scale label:Temps* label:Eval*Time*}}
         {copie .menu.options.colour "Couleurs" "Colours" {label:Arrière-plan label:Background* {label:Couleur du texte} label:Text* {label:Sélection des bases} label:Switcher* {label:Barre de progression} label:Progress*}}
         {copie .menu.options.fonts "Polices" "Fonts"}
-        {proc langues}
         {copie .menu.options.numbers "Format des nombres" "Number format"}
         {copie .menu.options.export "Exportation" "Export"}
         sep

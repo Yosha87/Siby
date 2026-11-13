@@ -848,7 +848,7 @@ proc ::moderne::biblio::ouvrir {} {
       "Click (bars) or double-click (table): play the move • ← →: back / forward • click a header to sort • follows the main board"]
   catch {::moderne::enBulle $w.aide}
   pack $w.aide -side bottom -fill x
-  bind $w <Escape> [list destroy $w]
+  bind $w <Escape> [list ::moderne::echap $w]
   bind $w <Destroy> [list ::moderne::biblio::fermeture %W $w ::moderne::biblio::majSiChange]
   # (the board followed: searched only when the position or the database
   # changed)

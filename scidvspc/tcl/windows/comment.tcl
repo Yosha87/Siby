@@ -67,7 +67,7 @@ proc ::commenteditor::Open {} {
        set ::commenteditor::showBoard 1
        ::commenteditor::toggleBoard
     } else {
-      destroy  .commentWin
+      ::moderne::echap .commentWin
     }
   }
 

@@ -558,6 +558,10 @@ proc ::moderne::disposition::jeuSuperposer {moteurs} {
     set W [winfo width .pw]
     set H [winfo height .pw]
     .pw.pw0 sashpos 0 [expr {min(int($W * 0.6), max(int($W * 0.66), $H - 40))}]
+    # (kept in the layout's sashes: a deferred restoreGeometry of the Lab's
+    # build, still to come on Windows, put the Lab's back and the game
+    # panel was drawn over the board, Yosha 2026-11-13)
+    catch {::moderne::docks::retenirSash .pw.pw0 0}
     catch ::docking::setTabStatus
   } err]
   if {$code} { jeuRetirer $moteurs ; return -code error $err }
@@ -606,6 +610,7 @@ proc ::moderne::disposition::jeuRetirer {{moteurs {}}} {
   # (the sashes once the panes are back in place)
   after idle [list apply {{col sashes sash0} {
     catch {.pw.pw0 sashpos 0 $sash0}
+    catch {::moderne::docks::retenirSash .pw.pw0 0}
     update idletasks
     set i 0
     foreach s $sashes { catch {$col sashpos $i $s} ; incr i }
@@ -654,6 +659,10 @@ proc ::moderne::disposition::jeuFenetre {w} {
   set f .fdock[string range $w 1 end]
   set nb {}
   if {[winfo exists .fdockpgnWin]} { set nb [::docking::find_tbn .fdockpgnWin] }
+  # (under the cover, in it: never in the Lab's group the notation may have
+  # gone back to meanwhile, drawn over the board, Yosha 2026-11-13)
+  variable jeuSup
+  if {$jeuSup ne {} && [winfo exists .jeuCouvre.nb]} { set nb .jeuCouvre.nb }
   if {$nb ne {}} { set ::docking::layout_dest_notebook $nb }
   set code [catch {::createToplevel $w} res]
   set ::docking::layout_dest_notebook {}

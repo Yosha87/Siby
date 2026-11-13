@@ -192,7 +192,7 @@ proc tools::graphs::filter::Open {} {
   standardShortcuts $w
   # bind $w.c <1> tools::graphs::filter::Switch
   bind $w.c <3> ::tools::graphs::filter::Refresh
-  bind $w <Escape> "destroy $w"
+  bind $w <Escape> [list ::moderne::echap $w]
 
   foreach {name text} {decade Decade year Year elo Rating move moves} {
     radiobutton $w.b.$name -padx 4 -pady 3 -text [string totitle $::tr($text)] \
@@ -495,7 +495,7 @@ proc ::tools::graphs::score::Refresh2 {{init 0}} {
     # bind $w.c <ButtonRelease-2> ::pgn::HideBoard
     $w.c bind title <ButtonPress-3> "tk_popup $w.menu.options %X %Y"
     $w.c bind title <ButtonPress-1> "tk_popup $w.menu.options %X %Y"
-    bind $w <Escape> "destroy $w"
+    bind $w <Escape> [list ::moderne::echap $w]
     standardWheelMouseBindings $w.c
 
     ::tools::graphs::score::ConfigMenus
@@ -955,7 +955,7 @@ proc ::tools::graphs::rating::Refresh {{player {}}} {
       recordWinSize .rgraph
     }
     bind $w.c <Button-1> ::tools::graphs::rating::Refresh
-    bind $w <Escape> "destroy $w"
+    bind $w <Escape> [list ::moderne::echap $w]
     bind $w <Destroy> {set ::tools::graphs::rating::players {}}
 
     ::tools::graphs::rating::ConfigMenus
@@ -1111,7 +1111,7 @@ proc tools::graphs::absfilter::Open {} {
   standardShortcuts $w
   # bind $w.c <1> tools::graphs::absfilter::Switch
   bind $w.c <3> ::tools::graphs::absfilter::Refresh
-  bind $w <Escape> "destroy $w"
+  bind $w <Escape> [list ::moderne::echap $w]
   foreach {name text} {decade Decade year Year elo Rating move moves} {
     radiobutton $w.b.$name -padx 4 -pady 3 -text [string totitle $::tr($text)] \
       -variable ::tools::graphs::absfilter::type -value $name \
