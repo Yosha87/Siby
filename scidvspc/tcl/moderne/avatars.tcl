@@ -134,7 +134,19 @@ proc ::moderne::avatars::trouver {nom} {
   # one's card, photo or crown by the surname and initial; only the name
   # exactly as written, Yosha 2026-11-09)
   if {[regexp {\([^()]*\)\s*$} $nom]} { return {} }
+  # (a given name with one more initial or name, "Petrosian, Tigran L.":
+  # another person, never the famous one's card by the surname and
+  # initial; Tigran L. Petrosian got the world champion's photo and crown,
+  # Yosha 2026-11-13)
+  set prenoms {}
+  if {[string first , $nom] >= 0} {
+    regsub -all {[^[:alpha:] -]+} [lindex [split $nom ,] 1] { } prenoms
+    set prenoms [lsearch -all -inline -not -exact [split [string trim $prenoms]] {}]
+  }
+  set i 0
   foreach k [cles $nom] {
+    incr i
+    if {$i > 1 && [llength $prenoms] > 1 && [lsearch -regexp $prenoms {^[[:alpha:]]$}] >= 0} { break }
     if {[info exists index($k)]} {
       # (found by the name's look only: not a game played outside their
       # life, "Lasker, E" in 1952, Yosha 2026-11-09)

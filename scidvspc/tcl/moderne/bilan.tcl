@@ -23,18 +23,42 @@ proc ::moderne::bilan::T {fr en} { return [::moderne::tr $fr $en] }
 ### (Yosha 2026-11-12: a review started again from a broadcast after its tab
 ### was closed in Analysis came up drawn over the notation, out of every tab
 ### group; siby.log "Broadcasts: .fdockbilanWin was in {}")
+### The notation's tab group, also while "Prepare against a player" borrows
+### the notation for its Notation tab (it is then out of every group: its
+### group is the one it goes back to; Yosha 2026-11-13: a review started
+### from there came up next to Toby). Returns {group borrowed}
+proc ::moderne::bilan::groupeNotation {} {
+  if {![winfo exists .fdockpgnWin]} { return {} }
+  set nb [::docking::find_tbn .fdockpgnWin]
+  if {$nb ne {} && [winfo exists $nb]} { return [list $nb 0] }
+  if {![catch {set ::moderne::prepa::pretNotation} p] && $p ne {}} {
+    set nb [lindex $p 0]
+    if {$nb ne {} && [winfo exists $nb]} { return [list $nb 1] }
+  }
+  return {}
+}
+
 proc ::moderne::bilan::placerOnglet {} {
   set d .fdockbilanWin
-  if {![winfo exists $d] || ![winfo exists .fdockpgnWin]} { return }
-  set nb [::docking::find_tbn .fdockpgnWin]
-  if {$nb eq {} || ![winfo exists $nb]} { return }
+  if {![winfo exists $d]} { return }
+  set g [groupeNotation]
+  if {$g eq {}} { return }
+  lassign $g nb prete
   set src [::docking::find_tbn $d]
-  if {$src eq $nb} { return }
-  catch {::moderne::journal "Review: tab was in {$src}, put next to the notation in $nb"}
-  if {$src ne {} && [winfo exists $src]} { catch {$src forget $d} }
-  catch {place forget $d}
-  if {[catch {$nb add $d -text [T "Bilan" "Review"]}]} { catch {$nb select $d} }
-  catch {raise $d}
+  if {$src ne $nb} {
+    catch {::moderne::journal "Review: tab was in {$src}, put next to the notation in $nb"}
+    if {$src ne {} && [winfo exists $src]} { catch {$src forget $d} }
+    catch {place forget $d}
+    if {[catch {$nb add $d -text [T "Bilan" "Review"]}]} { catch {$nb select $d} }
+    catch {raise $d}
+  }
+  # (the notation borrowed: the page of its group shown, the notation goes
+  # back there, then the review in front)
+  if {$prete} {
+    catch {::moderne::lab::montrerPour $d}
+    after idle [list catch [list $nb select $d]]
+    after 300 [list catch [list $nb select $d]]
+  }
 }
 
 proc ::moderne::bilan::lancer {} {

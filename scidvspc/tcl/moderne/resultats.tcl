@@ -66,7 +66,8 @@ proc ::moderne::resultats::montrer {requete {coups 1}} {
 proc ::moderne::resultats::placerOnglet {} {
   set d .fdockresultatsWin
   if {![winfo exists $d] || ![winfo exists .fdockpgnWin]} { return }
-  set nb [::docking::find_tbn .fdockpgnWin]
+  # (the notation's group, also while the preparation borrows it)
+  set nb [lindex [::moderne::bilan::groupeNotation] 0]
   set src [::docking::find_tbn $d]
   if {$nb eq {} || ![winfo exists $nb] || $src eq $nb} { return }
   set moteur 0

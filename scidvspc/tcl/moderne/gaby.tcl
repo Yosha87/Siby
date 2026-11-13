@@ -1532,11 +1532,16 @@ proc ::moderne::gaby::grandeSuivi {} {
   set n 0
   catch {set n [file size $grand(zip)]}
   set mo [expr {$n / 1048576}]
+  # (in two parts: the piece being downloaded, not "Complete Gaby")
+  set quoi "[T "Gaby complète" "Complete Gaby"] ([dateAffichee])"
+  if {[info exists grand(item)] && [info exists grand(nbTelech)]} {
+    set quoi "Gaby ([dict get $grand(item) num]/$grand(nbTelech), [dict get $grand(item) titre])"
+  }
   if {$grand(octets) > 0} {
     set pct [expr {min(99, int(100.0 * $n / $grand(octets)))}]
-    progres "[T "Gaby complète" "Complete Gaby"] ([dateAffichee])[T " : " ": "][T "téléchargement" "downloading"] $pct\u00a0% ($mo / [expr {$grand(octets) / 1048576}]\u00a0[T Mo MB])" $pct
+    progres "$quoi[T " : " ": "][T "téléchargement" "downloading"] $pct\u00a0% ($mo / [expr {$grand(octets) / 1048576}]\u00a0[T Mo MB])" $pct
   } else {
-    progres "[T "Gaby complète" "Complete Gaby"] ([dateAffichee])[T " : " ": "][T "téléchargement" "downloading"] $mo\u00a0[T Mo MB]"
+    progres "$quoi[T " : " ": "][T "téléchargement" "downloading"] $mo\u00a0[T Mo MB]"
   }
   after 1000 ::moderne::gaby::grandeSuivi
 }
@@ -2065,7 +2070,12 @@ proc ::moderne::gaby::partiesDebut {} {
   set k 0
   foreach p [::moderne::json::get $manifeste parties {}] {
     set nom [::moderne::json::get $p nom partie]
-    set titre [::moderne::json::get $p titre $nom]
+    # (the manifest's title is French only: Siby names the parts itself)
+    switch -- $nom {
+      lichess { set titre [T "parties Lichess" "Lichess games"] }
+      autres { set titre [T "autres sources" "other sources"] }
+      default { set titre [::moderne::json::get $p titre $nom] }
+    }
     foreach f [::moderne::json::get $p fichiers {}] {
       lappend grand(telech) [dict create titre $titre lien [::moderne::json::get $f fichier {}] \
           octets [::moderne::json::get $f octets 0] sha [string tolower [::moderne::json::get $f sha256 {}]] \

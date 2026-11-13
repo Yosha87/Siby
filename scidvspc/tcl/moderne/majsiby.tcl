@@ -336,6 +336,9 @@ proc ::moderne::majsiby::script {} {
     append t "rmdir /S /Q \"[file nativename $attente]\"\r\n"
     append t ":fin\r\n"
     append t "start \"\" \"$exe\"\r\n"
+    # (a .bat run by "start" stays open as a command prompt at its end:
+    # closed here, seen by Yosha after 1.0 beta 2, 2026-11-13)
+    append t "exit\r\n"
   } else {
     set f [file join $d installer.sh]
     set exe [file join [racine] siby]

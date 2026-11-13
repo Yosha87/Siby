@@ -15,8 +15,8 @@ the engine that plays like a human.
 Free · Open source · No ads
 
 **Download: [siby.tribychess.org](https://siby.tribychess.org/)**
-(version 1.0 beta). Nothing to install: unzip, then run `Siby.exe`
-(Windows) or `siby` (Linux). Siby then keeps itself up to date.
+(version 1.0 beta 3). Just unzip and run `Siby.exe` (Windows) or
+`siby` (Linux). Siby then keeps itself up to date.
 
 ## What it does
 

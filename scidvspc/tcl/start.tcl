@@ -17,7 +17,7 @@ set scidVersionDate {May 20, 2026}
 # Siby's own version, the one shown to users (beta until the 1.0
 # release); scidVersion above is the internal version of the database
 # engine (checked against sc_info version), never shown
-set sibyVersion "1.0 beta"
+set sibyVersion "1.0 beta 3"
 
 package require Tcl 8.5
 package require Tk  8.5
