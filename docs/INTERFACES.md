@@ -46,7 +46,7 @@ the other two sessions in the same change.**
 
 ### Files built with Siby's tools
 Gaby builds `sbbiblio` and `sbclassement` from this repository
-(`scidvspc/`: `./configure && make sbbiblio sbclassement`) and runs them on
+(`siby/`: `./configure && make sbbiblio sbclassement`) and runs them on
 each complete base.
 - `gaby.sbl`, `gaby.online.sbl` (opening library), `gaby.sbp` (position
   index): `sbbiblio`, format version `NSB_VERSION` (`src/nsb.h`). A file of
@@ -265,7 +265,7 @@ Maia and its own network; the answer format is the same.)
 
 Siby checks `https://siby.tribychess.org/siby_manifest.json` (root of the
 R2 bucket "siby") a little
-after start, then every 12 hours (`scidvspc/tcl/moderne/majsiby.tcl`):
+after start, then every 12 hours (`siby/tcl/moderne/majsiby.tcl`):
 
 ```json
 { "version": "1.0.1", "date": "2026-11-15",
@@ -280,7 +280,7 @@ after start, then every 12 hours (`scidvspc/tcl/moderne/majsiby.tcl`):
   `outils/linux/construire.sh`, with a single top folder `Siby/` holding
   `README.txt`.
 - Versions compare by number, a tag ("1.0 beta") being older than the same
-  number without one. `$::sibyVersion` (`scidvspc/tcl/start.tcl`) must be
+  number without one. `$::sibyVersion` (`siby/tcl/start.tcl`) must be
   raised for every release.
 - Publishing a release: raise `$::sibyVersion`, build both packages, run
   `outils/manifeste_siby.sh "notes FR" "notes EN"` (writes

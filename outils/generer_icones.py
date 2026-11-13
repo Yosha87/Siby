@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates scidvspc/tcl/moderne/icones.tcl: SCID's toolbar icons
+"""Generates siby/tcl/moderne/icones.tcl: SCID's toolbar icons
 redrawn with Tabler Icons (https://tabler.io/icons, MIT license,
 © Paweł Kuna), at the original sizes, in two colors (dark / light theme).
 Usage: outils/generer_icones.py   (downloads the SVGs from jsdelivr,
@@ -9,7 +9,7 @@ import base64, os, subprocess, sys, tempfile, urllib.request
 VERSION = "3.19.0"
 URL = "https://unpkg.com/@tabler/icons@%s/icons/outline/%s.svg"  # (or cdn.jsdelivr.net/npm/)
 ICI = os.path.dirname(os.path.abspath(__file__))
-SORTIE = os.path.join(ICI, "..", "scidvspc", "tcl", "moderne", "icones.tcl")
+SORTIE = os.path.join(ICI, "..", "siby", "tcl", "moderne", "icones.tcl")
 
 # SCID icon: (Tabler icon, size in pixels, accent?)
 CORRESPONDANCE = {

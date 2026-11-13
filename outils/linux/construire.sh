@@ -20,7 +20,7 @@ TRAVAIL=$(cd "$TRAVAIL" && pwd)
 echo "== Siby for Linux"
 rm -rf "$TRAVAIL/scid" "$TRAVAIL/install"
 mkdir -p "$TRAVAIL/scid"
-cd "$RACINE/scidvspc"
+cd "$RACINE/siby"
 tar cf - --exclude='*.o' --exclude='*.a' --exclude=./tkscid --exclude=./tcscid --exclude=./pgnscid --exclude=./sbbiblio \
     --exclude=./sbclassement --exclude=./scid --exclude=./tcl/sharedir.tcl . | (cd "$TRAVAIL/scid" && tar xf -)
 cd "$TRAVAIL/scid"
@@ -70,7 +70,7 @@ exec "$ICI/bin/tkscid" -encoding utf-8 "$ICI/bin/scid" "$@"
 L
 chmod 755 "$DIST/siby"
 # Icon, and a script that adds Siby to the applications menu
-cp "$RACINE/scidvspc/icons/siby.png" "$DIST/siby.png" 2>/dev/null || true
+cp "$RACINE/siby/icons/siby.png" "$DIST/siby.png" 2>/dev/null || true
 cat > "$DIST/installer-raccourci.sh" <<'L'
 #!/bin/sh
 # Adds Siby to the applications menu (for the current user only)
@@ -90,8 +90,8 @@ D
 echo "Siby added to the applications menu."
 L
 chmod 755 "$DIST/installer-raccourci.sh"
-cp "$RACINE/scidvspc/COPYING" "$DIST/licences/COPYING.txt"
-cp "$RACINE/scidvspc/README.txt" "$DIST/licences/README-scidvspc.txt"
+cp "$RACINE/siby/COPYING" "$DIST/licences/COPYING.txt"
+cp "$RACINE/siby/README.txt" "$DIST/licences/README-scidvspc.txt"
 cp "$ICI/README.txt" "$DIST/README.txt"
 
 ### 3. Archive

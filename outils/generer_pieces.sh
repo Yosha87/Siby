@@ -1,13 +1,13 @@
 #!/bin/sh
-# Generates scidvspc/tcl/moderne/cburnett.tcl: the cburnett piece set
-# (SVGs from scidvspc/bitmaps/cburnett) rendered as PNG at each board size
+# Generates siby/tcl/moderne/cburnett.tcl: the cburnett piece set
+# (SVGs from siby/bitmaps/cburnett) rendered as PNG at each board size
 # of SCID vs. PC. Each size = a strip of 12 pieces (wp wn wb wr wq wk
 # bp bn bb br bq bk), the format expected by setPieceData (tcl/bitmaps.tcl).
 # Dependencies: rsvg-convert (librsvg2-bin), ImageMagick (convert), base64.
 set -e
 RACINE=$(cd "$(dirname "$0")/.." && pwd)
-SVG="$RACINE/scidvspc/bitmaps/cburnett"
-SORTIE="$RACINE/scidvspc/tcl/moderne/cburnett.tcl"
+SVG="$RACINE/siby/bitmaps/cburnett"
+SORTIE="$RACINE/siby/tcl/moderne/cburnett.tcl"
 TMP=$(mktemp -d)
 TAILLES="25 30 35 40 45 50 55 60 65 70 75 80 90 100 110 120 130 140 150 160"
 

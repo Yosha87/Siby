@@ -7,7 +7,7 @@
 # the font and sits the piece on the text's baseline.
 import os, subprocess, tempfile
 from PIL import Image
-ICI = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scidvspc', 'bitmaps')
+ICI = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'siby', 'bitmaps')
 SORTIE = os.path.join(ICI, 'champions')
 os.makedirs(SORTIE, exist_ok=True)
 for f in os.listdir(SORTIE):

@@ -44,7 +44,7 @@ fi
 echo "== SCID for Windows"
 rm -rf "$TRAVAIL/scid"
 mkdir -p "$TRAVAIL/scid"
-cd "$RACINE/scidvspc"
+cd "$RACINE/siby"
 tar cf - --exclude='*.o' --exclude='*.a' --exclude=./tkscid --exclude=./tcscid --exclude=./pgnscid --exclude=./sbbiblio --exclude=./sbclassement . | (cd "$TRAVAIL/scid" && tar xf -)
 cd "$TRAVAIL/scid"
 make -f Makefile.mingw W64=1 TCL_DIR="$TCLTK" -j"$(nproc)" > "$TRAVAIL/scid.log" 2>&1 || {
@@ -76,7 +76,7 @@ for p in dde1.4 reg1.3; do cp -r "$TCLTK/lib/$p" "$DIST/lib/"; done
 # on) in a folder of their own
 mkdir -p "$DIST/licences"
 cp COPYING "$DIST/licences/COPYING.txt"
-cp "$RACINE/scidvspc/README.txt" "$DIST/licences/README-scidvspc.txt"
+cp "$RACINE/siby/README.txt" "$DIST/licences/README-scidvspc.txt"
 cp "$ICI/README.txt" "$DIST/README.txt"
 # Launcher at the top: Siby.exe, no console window (a .bat file opens one)
 $CROSS-gcc -municode -mwindows -O2 -o "$DIST/Siby.exe" "$ICI/lanceur.c" "$TRAVAIL/scid/scid.res" 2>/dev/null ||

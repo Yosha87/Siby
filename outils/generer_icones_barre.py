@@ -2,7 +2,7 @@
 """Icons of Siby's left bar (My databases, Lab, Broadcasts, Play), drawn as
 images of the same size: fonts draw the symbols at different sizes, and
 Windows turns some of them into colour emoji. Writes
-scidvspc/tcl/moderne/navicones.tcl (base64 PNG, dark and light themes)."""
+siby/tcl/moderne/navicones.tcl (base64 PNG, dark and light themes)."""
 import base64, io, math, os
 from PIL import Image, ImageDraw, ImageFont
 
@@ -119,6 +119,6 @@ for nom, f in (("bases", bases), ("lab", lab), ("direct", direct), ("jouer", jou
             lignes.append(f"  set iconesData({nom},{th}{suffixe}) {{{png(f, c, taille)}}}")
 lignes.append("}")
 racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-with open(os.path.join(racine, "scidvspc/tcl/moderne/navicones.tcl"), "w") as c:
+with open(os.path.join(racine, "siby/tcl/moderne/navicones.tcl"), "w") as c:
     c.write("\n".join(lignes) + "\n")
 print("ok")

@@ -29,7 +29,7 @@ From the root of the repository:
 outils/compiler.sh          # or: outils/compiler.sh --deps  (installs the packages first)
 ```
 
-The script runs `./configure` then `make` in `scidvspc/`, and installs everything into
+The script runs `./configure` then `make` in `siby/`, and installs everything into
 `build-install/` (inside the repository). **Nothing is written to the system.** The
 build takes about 20 seconds. The compiler warnings
 (`register`, `memcpy`…) come from the original code and are harmless.
@@ -37,7 +37,7 @@ build takes about 20 seconds. The compiler warnings
 Equivalent manual build:
 
 ```sh
-cd scidvspc
+cd siby
 ./configure BINDIR=$PWD/../build-install/bin SHAREDIR=$PWD/../build-install/share/scid
 make -j$(nproc)
 make install
@@ -58,18 +58,18 @@ To add Stockfish: menu **Tools › Analysis Engines › New**, command
 
 | Path | Contents |
 |---|---|
-| `scidvspc/` | Code of SCID vs. PC 4.27 (GPL v2), imported as is, then modified |
-| `scidvspc/tcl/moderne/` | **Our additions**: theme (`theme.tcl`), pieces (`cburnett.tcl`, generated), WDL (`wdl.tcl`) |
-| `scidvspc/bitmaps/cburnett/` | Original SVGs of the cburnett pieces + credits |
+| `siby/` | Code of SCID vs. PC 4.27 (GPL v2), imported as is, then modified |
+| `siby/tcl/moderne/` | **Our additions**: theme (`theme.tcl`), pieces (`cburnett.tcl`, generated), WDL (`wdl.tcl`) |
+| `siby/bitmaps/cburnett/` | Original SVGs of the cburnett pieces + credits |
 | `outils/compiler.sh` | Build + local installation |
 | `outils/generer_pieces.sh` | Regenerates `tcl/moderne/cburnett.tcl` from the SVGs |
 | `outils/captures/` | Automatic screenshots under Xvfb |
 | `captures/` | Before / after screenshots |
 
 The changes made in the original files are all marked with a
-`Siby` comment (`grep -rn "Siby" scidvspc/tcl`). The executable `scid`
+`Siby` comment (`grep -rn "Siby" siby/tcl`). The executable `scid`
 file is the concatenation of the Tcl files listed in
-`scidvspc/Makefile.conf` (variable `TCLS`): after any change to a
+`siby/Makefile.conf` (variable `TCLS`): after any change to a
 `.tcl` file, run `outils/compiler.sh` again.
 
 ## 5. Screenshots (Xvfb)
@@ -104,7 +104,7 @@ outils/windows/construire.sh        # → dist/Siby-windows-x64.zip
 ```
 
 The script downloads and builds Tcl/Tk 8.6.14 for Windows once
-(in `build-windows/`), builds SCID with `scidvspc/Makefile.mingw`, then
+(in `build-windows/`), builds SCID with `siby/Makefile.mingw`, then
 assembles a portable folder: `Siby.exe` (a launcher without console window, outils/windows/lanceur.c), `bin\Siby.exe` and the
 SCID files, `lib\` (Tcl/Tk), `README.txt`, `COPYING.txt`. The only
 dependencies are `tcl86.dll`, `tk86.dll`, `zlib1.dll` (included).

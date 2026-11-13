@@ -5,7 +5,7 @@
 #        outils/compiler.sh --deps     (first install the Debian/Ubuntu packages)
 set -e
 RACINE=$(cd "$(dirname "$0")/.." && pwd)
-SRC="$RACINE/scidvspc"
+SRC="$RACINE/siby"
 DEST="$RACINE/build-install"
 
 if [ "$1" = "--deps" ]; then

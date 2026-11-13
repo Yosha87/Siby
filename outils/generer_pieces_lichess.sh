@@ -1,13 +1,13 @@
 #!/bin/sh
 # Downloads free piece sets of Lichess (SVG, lila repository) and renders
-# them as PNG strips in scidvspc/bitmaps/pieces/<set>/<size>.png (12
+# them as PNG strips in siby/bitmaps/pieces/<set>/<size>.png (12
 # pieces: wp wn wb wr wq wk bp bn bb br bq bk), loaded by Siby when the set
 # is chosen (tcl/moderne/pieces.tcl). Only sets under a free license
 # (GPL, AGPL, Apache, MIT, CC BY, CC BY-SA, CC0): see LISEZMOI.md.
 # Dependencies: curl, rsvg-convert (librsvg2-bin), ImageMagick (convert).
 set -e
 RACINE=$(cd "$(dirname "$0")/.." && pwd)
-SORTIE="$RACINE/scidvspc/bitmaps/pieces"
+SORTIE="$RACINE/siby/bitmaps/pieces"
 TAILLES="25 30 35 40 45 50 55 60 65 70 75 80 90 100 110 120 130 140 150 160"
 URL=https://raw.githubusercontent.com/lichess-org/lila/master/public/piece
 # set|Name shown|author|license

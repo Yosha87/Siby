@@ -1,9 +1,9 @@
 # Siby - Scid Improved By Yosha
 
 <p>
-  <img src="scidvspc/icons/siby.png" width="96" alt="Siby">
-  <img src="scidvspc/icons/gaby.png" width="96" alt="Gaby">
-  <img src="scidvspc/icons/toby.png" width="96" alt="Toby">
+  <img src="siby/icons/siby.png" width="96" alt="Siby">
+  <img src="siby/icons/gaby.png" width="96" alt="Gaby">
+  <img src="siby/icons/toby.png" width="96" alt="Toby">
 </p>
 
 **Prepare, analyze, practice.** Siby is free, all-in-one chess database
@@ -70,11 +70,11 @@ See [COMPILATION.md](COMPILATION.md). In short:
 
 ## License and credits
 
-Siby is free software under the GNU GPL v2 (see `scidvspc/COPYING`). It is
+Siby is free software under the GNU GPL v2 (see `siby/COPYING`). It is
 built on SCID vs. PC (Steven Atkinson) and Scid (Shane Hudson), and uses
 Stockfish, Leela Chess Zero, Maia, Tcl/Tk, the cburnett pieces and data
 from Lichess and Wikimedia Commons. The full list, with licenses and
-authors, is in [scidvspc/THIRD_PARTY.md](scidvspc/THIRD_PARTY.md) and in
+authors, is in [siby/THIRD_PARTY.md](siby/THIRD_PARTY.md) and in
 Siby's Help › Thanks.
 
 © 2026 Yosha Iglesias · [tribychess.org](https://tribychess.org/) ·

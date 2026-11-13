@@ -13,7 +13,7 @@ import base64, io, os
 from PIL import Image, ImageDraw, ImageFilter
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-SORTIE = os.path.join(ICI, '..', '..', 'scidvspc', 'tcl', 'moderne', 'logosmoteurs.tcl')
+SORTIE = os.path.join(ICI, '..', '..', 'siby', 'tcl', 'moderne', 'logosmoteurs.tcl')
 TAILLES = (48, 72, 96)
 
 

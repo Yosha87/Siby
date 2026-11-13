@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds scidvspc/tcl/moderne/drapeaux.tcl: the country flags of Siby.
+"""Builds siby/tcl/moderne/drapeaux.tcl: the country flags of Siby.
 
 Flags from flag-icons (https://github.com/lipis/flag-icons, MIT licence),
 4:3 SVGs rasterised to 64x48 PNG with rsvg-convert, embedded in base64, and
@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-SORTIE = os.path.join(ICI, "..", "scidvspc", "tcl", "moderne", "drapeaux.tcl")
+SORTIE = os.path.join(ICI, "..", "siby", "tcl", "moderne", "drapeaux.tcl")
 LARGEUR, HAUTEUR = 64, 48
 
 # Names seen in Lichess broadcast locations that country.json does not give
