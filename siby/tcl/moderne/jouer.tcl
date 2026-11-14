@@ -90,9 +90,11 @@ proc ::moderne::jouer::ouvrir {{quoi {}}} {
   # (no Leela opponent any more, Yosha 2026-11-01: Toby plays up to 2900)
   if {$onglet ni {toby alterego}} { set onglet toby }
   if {![llength [moteurs toby]]} {
-    tk_messageBox -icon info -parent . -title [T "Jouer" "Play"] -message [T \
-        "Toby n'est pas parmi les moteurs : ajoute-le dans Outils › Moteurs." \
-        "Toby is not among the engines: add it in Tools › Engines."]
+    # (as the review does: installing it offered at once)
+    set r [tk_messageBox -type yesno -icon info -parent . -title [T "Jouer" "Play"] -message [T \
+        "Toby n'est pas encore installé.\n\nL'installer maintenant (Outils › Ajouter un moteur, en un clic) ?" \
+        "Toby is not installed yet.\n\nInstall it now (Tools › Add an engine, in one click)?"]]
+    if {$r eq "yes"} { catch {::moderne::ajout::ouvrir} }
     return
   }
   if {[winfo exists $w]} {

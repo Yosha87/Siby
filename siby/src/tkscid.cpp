@@ -28,6 +28,15 @@ extern "C" int sibySonJouer (const char * chemin);
 extern "C" int sibySonEntretien ();
 #endif
 
+// Siby: Tcl's mutexes and conditions for real. Without TCL_THREADS tcl.h
+// turns them into empty macros: the background writer (sc_ecrire_fond)
+// spun without waiting, one core at 87 % from start to end, and shared
+// its queue unprotected (on Linux, built on Debian 11, siby.log was never
+// written, 2026-11-14). The Tcl libraries Siby uses are all built with
+// threads (Ubuntu's, the Linux package's, the Windows one's).
+#ifndef TCL_THREADS
+#define TCL_THREADS 1
+#endif
 #include "tkscid.h"
 #include "sibyfopen.h"
 

@@ -271,17 +271,9 @@ if {[llength $engines(list)] == 0} {
 	    Cmd  $scidExeDir/scidlet
 	    Dir  $scidUserDir"
   } else {
-    engine "Name Toga
-            Cmd  fruit
-            Dir  $scidUserDir
-            UCI  1"
-    # use "Cmd phalanx -g /tmp/phalanx_logfile" for debugging
-    engine "Name Phalanx
-            Cmd  phalanx
-            Dir  $scidUserDir"
-    engine "Name Scidlet
-	    Cmd  scidlet
-	    Dir  ."
+    ### Siby: no default engine (Yosha 2026-11-14: not SCID's Scidlet,
+    ### Toga or Phalanx); Stockfish and Leela found on the computer are
+    ### added (tcl/moderne/moteurs.tcl), Toby from Tools › Add an engine
   }
 
 }

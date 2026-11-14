@@ -17,10 +17,26 @@ set scidVersionDate {May 20, 2026}
 # Siby's own version, the one shown to users (beta until the 1.0
 # release); scidVersion above is the internal version of the database
 # engine (checked against sc_info version), never shown
-set sibyVersion "1.0 beta 5"
+set sibyVersion "1.0 beta 6"
 
 package require Tcl 8.5
 package require Tk  8.5
+
+### Siby: on Linux, the desktop's scale (Xft.dpi: 192 at 200 %) for Tk too.
+### The text follows Xft.dpi but tk scaling stayed at 96 dpi: at 200 %
+### the text doubled, not the icons and the widths (Ubuntu 24.04 GNOME,
+### 2026-11-14). At 100 % (96 dpi) nothing changes.
+if {$::tcl_platform(platform) eq "unix" && [tk windowingsystem] eq "x11"} {
+  set ::sibyXftDpi {}
+  foreach cmd {{xrdb -query} {xprop -root RESOURCE_MANAGER}} {
+    set exe [auto_execok [lindex $cmd 0]]
+    if {$exe eq {} || [catch {exec {*}$exe {*}[lrange $cmd 1 end] 2>/dev/null} r]} { continue }
+    if {[regexp {Xft\.dpi:(?:\\t|\s)*([0-9.]+)} $r -> ::sibyXftDpi]} { break }
+  }
+  if {[string is double -strict $::sibyXftDpi] && $::sibyXftDpi > 100 && $::sibyXftDpi < 500} {
+    tk scaling [expr {$::sibyXftDpi / 72.0}]
+  }
+}
 
 # Siby: the window stays invisible during startup (menus, board and
 # layout are being built); it is shown once ready, maximized

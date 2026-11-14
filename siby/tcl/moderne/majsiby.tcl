@@ -226,26 +226,17 @@ proc ::moderne::majsiby::echec {texte} {
 proc ::moderne::majsiby::telecharge {dest fichier err} {
   variable manifeste
   if {$fichier eq {}} { echec "[T "Siby : téléchargement impossible" "Siby: download failed"] ($err)" ; return }
-  set attendu [string tolower [::moderne::json::get [dict get $manifeste [plateforme]] sha256 {}]]
-  set exe [::moderne::nsb::outil]
-  if {$attendu eq {} || $exe eq {}} { deballer $dest ; return }
+  # (checked by Siby itself, and refused unless checked: with no SHA-256 in
+  # the manifest, or the outside tool missing or blocked, the package was
+  # installed unchecked; reported to Yosha on 2026-11-14)
+  set attendu [string tolower [string trim [::moderne::json::get [dict get $manifeste [plateforme]] sha256 {}]]]
   ::moderne::nsb::annonce [T "Siby : vérification du fichier…" "Siby: checking the file…"] -1
-  if {[catch {open [list | $exe --sha256 $dest] r} c]} { deballer $dest ; return }
-  fconfigure $c -blocking 0
-  set ::moderne::majsiby::shaLu {}
-  fileevent $c readable [list ::moderne::majsiby::shaFin $c $dest $attendu]
-}
-
-proc ::moderne::majsiby::shaFin {c dest attendu} {
-  append ::moderne::majsiby::shaLu [read $c]
-  if {![eof $c]} { return }
-  catch {close $c}
+  update idletasks
   set sha {}
-  regexp {SHA256 ([0-9a-fA-F]+)} $::moderne::majsiby::shaLu -> sha
-  if {[string tolower $sha] ne $attendu} {
+  if {![regexp {^[0-9a-f]{64}$} $attendu] || [catch {sc_gaby sha256 $dest} sha] || ![string equal -nocase $sha $attendu]} {
     catch {file delete $dest}
-    echec [T "Siby : fichier abîmé pendant le téléchargement (SHA-256), rien n'est changé." \
-              "Siby: file damaged during the download (SHA-256), nothing is changed."]
+    echec [T "Siby : fichier de mise à jour non vérifié (SHA-256), rien n'est changé." \
+              "Siby: update file not verified (SHA-256), nothing is changed."]
     return
   }
   deballer $dest
@@ -344,7 +335,9 @@ proc ::moderne::majsiby::script {} {
     set exe [file join [racine] siby]
     set t "#!/bin/sh\n"
     append t "while kill -0 $pid 2>/dev/null; do sleep 1; done\n"
-    append t "cp -a \"$src/.\" \"$dst/\" && rm -rf \"$attente\"\n"
+    # (-f: a read-only file, such as the libtcl8.6.so of the package of
+    # 2026-11-14, replaced too; with -a alone the copy stopped there)
+    append t "cp -af \"$src/.\" \"$dst/\" && rm -rf \"$attente\"\n"
     append t "nohup \"$exe\" >/dev/null 2>&1 &\n"
   }
   set c [open $f w]
