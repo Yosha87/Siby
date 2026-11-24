@@ -52,6 +52,16 @@ proc ::moderne::enligne::estBaseEnLigne {f} {
   string equal -nocase [file dirname [file normalize $f]] $d
 }
 
+### Is f the database of the user's own online games (Options › My
+### profile)? It is in My databases, as "My online games" (a user: "it finds
+### my online games, but I don't see them in any database", 2026-11-17)
+proc ::moderne::enligne::estMaBase {f} {
+  if {![info exists ::moderne::profilNom] || [string trim $::moderne::profilNom] eq {}} { return 0 }
+  set f [file normalize $f]
+  if {[string match -nocase *.si4 $f]} { set f [file rootname $f] }
+  string equal -nocase $f [file normalize [fichierBase $::moderne::profilNom]]
+}
+
 proc ::moderne::enligne::fichierBase {nom} {
   return [file join [dossier] [slug $nom]]
 }
@@ -164,6 +174,11 @@ proc ::moderne::enligne::base {nom} {
       [file rootname [sc_base filename $bases($f)]] eq [file normalize $f]} {
     return $bases($f)
   }
+  # (opened by the user from My databases, not by this namespace: that
+  # slot; "already opened" made the update fail)
+  set s 0
+  catch {set s [::moderne::mesbases::slot [::moderne::mesbases::chemin $f]]}
+  if {$s} { set bases($f) $s ; return $s }
   if {![file exists $f.si4]} { return 0 }
   set courante [sc_base current]
   if {[catch {sc_base open $f} b]} { return 0 }
@@ -251,6 +266,11 @@ proc ::moderne::enligne::ecrireFichier {f texte {mode w}} {
   puts -nonewline $c $texte ; close $c
 }
 
+proc ::moderne::enligne::finir {fin message nb} {
+  variable occupe 0
+  uplevel #0 [concat $fin [list $message $nb]]
+}
+
 ### Lichess "since" (ms): just after the most recent game already kept
 proc ::moderne::enligne::depuisLichess {texte} {
   set max 0
@@ -261,14 +281,28 @@ proc ::moderne::enligne::depuisLichess {texte} {
   return [expr {$max ? ($max + 1) * 1000 : 0}]
 }
 
+### One download at a time (e.g. the daily update of My online games,
+### profil.tcl): another one waits for it
+namespace eval ::moderne::enligne { variable occupe 0 }
 proc ::moderne::enligne::telecharger {nom lichess chesscom fin {progres {}}} {
   variable dl
+  variable occupe
+  variable occupeDepuis
+  # (a download that never ended, an error on the way: freed after 2 hours)
+  if {$occupe && [info exists occupeDepuis] && [clock seconds] - $occupeDepuis > 7200} { set occupe 0 }
+  if {$occupe} {
+    if {$progres ne {}} { catch {uplevel #0 [concat $progres [list [T "En attente d'un autre téléchargement…" "Waiting for another download…"]]]} }
+    after 2000 [list ::moderne::enligne::telecharger $nom $lichess $chesscom $fin $progres]
+    return
+  }
+  set occupe 1
+  set occupeDepuis [clock seconds]
   noterComptes $nom $lichess $chesscom
   array unset dl
   set dl(nom) $nom
   set dl(lichess) [string trim $lichess]
   set dl(chesscom) [string tolower [string trim $chesscom]]
-  set dl(fin) $fin
+  set dl(fin) [list ::moderne::enligne::finir $fin]
   set dl(progres) $progres
   set dl(etape) {}
   set dl(moisFait) 0
@@ -395,7 +429,8 @@ proc ::moderne::enligne::construire {} {
   variable dl
   # The games are prepared in slices (thousands of games: several seconds of
   # work), then the database is made
-  set dl(textes) {}
+  set dl(parties) {}
+  set dl(cles) {}
   set dl(cadences) {}
   set dl(n) 0
   set dl(ix) 0
@@ -438,6 +473,15 @@ proc ::moderne::enligne::construireTranche {} {
       regexp {\[TimeControl "([^"]*)"\]} $partie -> tc
       set cad [cadence $tc]
       if {$cad eq {}} { continue }
+      # (the game's own address before Site is rewritten: what tells a
+      # game already in the user's database, see construireBase)
+      set cle {}
+      if {![regexp {\[Link "([^"]+)"\]} $partie -> cle]} { regexp {\[Site "(https?://[^"]+)"\]} $partie -> cle }
+      if {$cle eq {}} {
+        set x {}
+        foreach t {White Black UTCDate UTCTime Date Result} { set v {} ; regexp "\\\[$t \"(\[^\"\]*)\"\\\]" $partie -> v ; lappend x $v }
+        set cle [join $x |]
+      }
       # The account becomes the player's name (for the preparation)
       set compteRe [string map {\\ \\\\ . \\. * \\* ? \\? + \\+ ( \\( ) \\) [ \\[ ] \\]} $compte]
       regsub -nocase "\\\[White \"$compteRe\"\\\]" $partie "\[White \"$nomRe\"\]" partie
@@ -445,7 +489,8 @@ proc ::moderne::enligne::construireTranche {} {
       set siteTxt [expr {$site eq "lichess" ? "lichess.org" : "chess.com"}]
       regsub {\[Site "[^"]*"\]} $partie "\[Site \"$siteTxt\"\]" partie
       regsub {\[Event "([^"]*)"\]} $partie "\[Event \"$siteTxt : \\1\"\]" partie
-      append dl(textes) [string trim $partie] "\n\n"
+      lappend dl(parties) [string trim $partie]
+      lappend dl(cles) $cle
       lappend dl(cadences) $cad
       incr dl(n)
     }
@@ -460,7 +505,6 @@ proc ::moderne::enligne::construireTranche {} {
 proc ::moderne::enligne::construireBase {} {
   variable dl
   set nom $dl(nom)
-  set textes $dl(textes)
   set cadences $dl(cadences)
   set n $dl(n)
   set message [join $dl(messages) "\n"]
@@ -468,9 +512,19 @@ proc ::moderne::enligne::construireBase {} {
     uplevel #0 [concat $dl(fin) [list $message 0]]
     return
   }
-  # New database (this player's previous one is replaced)
   set f [fichierBase $nom]
+  # The user's own games (My profile, in My databases): only the new games
+  # added, what was done in the others kept (built again, the database
+  # lost the user's comments and analyses each time)
+  if {[estMaBase $f] && [file exists $f.si4] && [file exists $f.cles]} {
+    ajouterNouvelles $f $message
+    return
+  }
+  set textes "[join $dl(parties) "\n\n"]\n\n"
+  # New database (this player's previous one is replaced)
   variable bases
+  # (open by the user meanwhile: that slot closed before the files go)
+  catch {set s [::moderne::mesbases::slot [::moderne::mesbases::chemin $f]] ; if {$s} { set bases($f) $s }}
   if {[info exists bases($f)] && [sc_base inUse $bases($f)]} {
     catch {
       set c [sc_base current]
@@ -508,7 +562,56 @@ proc ::moderne::enligne::construireBase {} {
   set nb [sc_base numGames $b]
   if {[sc_base inUse $courante]} { sc_base switch $courante }
   catch {::windows::switcher::Refresh}
+  catch {ecrireFichier $f.cles "[join $dl(cles) \n]\n"}
   uplevel #0 [concat $dl(fin) [list $message $nb]]
+}
+
+### The new games added to the user's database f (keys of the games
+### already there in f.cles)
+proc ::moderne::enligne::ajouterNouvelles {f message} {
+  variable dl
+  set connues [split [lireFichier $f.cles] \n]
+  set deja [dict create]
+  foreach c $connues { if {$c ne {}} { dict set deja $c 1 } }
+  set nouvelles {} ; set cles {} ; set cads {}
+  foreach p $dl(parties) c $dl(cles) cad $dl(cadences) {
+    if {[dict exists $deja $c]} { continue }
+    dict set deja $c 1
+    lappend nouvelles $p ; lappend cles $c ; lappend cads $cad
+  }
+  set b [base $dl(nom)]
+  if {!$b} {
+    uplevel #0 [concat $dl(fin) [list "$message\n[T Erreur Error] : $f" 0]]
+    return
+  }
+  if {[llength $nouvelles]} {
+    set pgn $f.nouvelles.pgn
+    ecrireFichier $pgn "[join $nouvelles "\n\n"]\n\n"
+    set courante [sc_base current]
+    if {[catch {
+      sc_base switch $b
+      set avant [sc_base numGames $b]
+      sc_base import file $pgn
+      set g $avant
+      foreach cad $cads {
+        incr g
+        if {$g > [sc_base numGames $b]} { break }
+        catch {sc_game flag [dict get {classique 1 rapide 2 blitz 3} $cad] $g 1}
+      }
+    } err]} {
+      if {[sc_base inUse $courante]} { catch {sc_base switch $courante} }
+      catch {file delete $pgn}
+      uplevel #0 [concat $dl(fin) [list "$message\n[T Erreur Error] : $err" 0]]
+      return
+    }
+    if {[sc_base inUse $courante]} { sc_base switch $courante }
+    catch {file delete $pgn}
+    ecrireFichier $f.cles "[join $cles \n]\n" a
+    catch {::windows::switcher::Refresh}
+    if {[sc_base current] == $b} { catch {::windows::gamelist::Refresh} ; catch updateBoard }
+  }
+  set dl(nouvelles) [llength $nouvelles]
+  uplevel #0 [concat $dl(fin) [list $message [sc_base numGames $b]]]
 }
 
 ################################################################################

@@ -64,7 +64,10 @@ proc ::moderne::majsiby::comparer {a b} {
   if {$ta eq $tb} { return 0 }
   if {$ta eq {}} { return 1 }
   if {$tb eq {}} { return -1 }
-  return [string compare $ta $tb]
+  # (numbers inside the tag compared as numbers: "beta 10" newer than
+  # "beta 9", which a plain string comparison got wrong)
+  if {[lindex [lsort -dictionary [list $ta $tb]] 0] eq $ta} { return -1 }
+  return 1
 }
 
 proc ::moderne::majsiby::plateforme {} {
@@ -360,3 +363,262 @@ proc ::moderne::majsiby::auQuitter {} {
     catch {exec /bin/sh $f >/dev/null 2>@1 &}
   }
 }
+
+################################################################################
+### Toby's updates (Yosha 2026-11-17, before Toby 2)
+###
+### - Toby's manifest (toby.tribychess.org/toby_manifest.json, see
+###   ajoutmoteur.tcl) is read a little after start, then every 12 hours,
+###   and from Help › Check for updates, when a Toby downloaded by Siby is
+###   registered (its program in a folder named Toby).
+### - The installed version: Toby/siby_toby.txt (written by Siby: "version
+###   variant"), else Toby/VERSION (Toby's own), else 1.0 (the only version
+###   published before).
+### - A newer one: offered at the bottom right (Update / Later, Later: not
+###   again for 3 days). Update: the same variant (full, light, core) is
+###   downloaded and checked (SHA-256) by Tools › Add an engine, unpacked
+###   beside the old Toby (Toby.maj), and put in its place at Siby's next
+###   start, before any Toby runs (a running Toby cannot be replaced on
+###   Windows). Its path stays the same: nothing to set up again.
+################################################################################
+
+namespace eval ::moderne::majtoby {
+  variable plusTard          ;# dict version -> time "Later" was chosen
+  variable manifeste {}
+  variable installe {}       ;# version just put in place at this start
+}
+if {![info exists ::moderne::majtoby::plusTard]} { set ::moderne::majtoby::plusTard {} }
+
+proc ::moderne::majtoby::T {fr en} { return [::moderne::tr $fr $en] }
+
+### The file naming the Toby waiting to be put in place: {new dest maj version}
+proc ::moderne::majtoby::fichierAttente {} { return [file join $::scidUserDir toby_maj.txt] }
+
+### Siby's start: the Toby waiting put in place of the old one
+proc ::moderne::majtoby::appliquer {{essais 16}} {
+  variable installe
+  set f [fichierAttente]
+  if {![file exists $f]} { return }
+  if {[catch {set c [open $f r] ; set l [read $c] ; close $c}] || [llength $l] < 4} {
+    catch {file delete $f}
+    return
+  }
+  lassign $l nouveau dest maj version
+  if {![file isdirectory $nouveau]} {
+    catch {file delete $f}
+    catch {::moderne::journal "Toby update: $nouveau missing, cancelled"}
+    return
+  }
+  set ancien $dest.ancien
+  catch {file delete -force $ancien}
+  # (a Toby of the previous run may take a few seconds to end: tried for
+  # 8 s, then at the next start)
+  set err {}
+  for {set i 0} {[file exists $dest] && $i < $essais} {incr i} {
+    if {![catch {file rename $dest $ancien} err]} { set err {} ; break }
+    after 500
+  }
+  if {[file exists $dest]} {
+    catch {::moderne::journal "Toby update waiting: $err"}
+    return 0
+  }
+  if {[catch {file rename $nouveau $dest} err]} {
+    catch {file rename $ancien $dest}
+    catch {::moderne::journal "Toby update failed: $err"}
+    return 0
+  }
+  # (the old Toby, about 1 GB, deleted in the background: done here, Siby
+  # froze 17 s, Windows VM 2026-11-18)
+  supprimerPlusTard $ancien
+  supprimerPlusTard $maj
+  catch {file delete $f}
+  set installe $version
+  catch {::moderne::journal "Toby updated to $version"}
+  return 1
+}
+
+### Is a Toby process running now (analysis, preload, level, review, game)?
+proc ::moderne::majtoby::actif {} {
+  if {[winfo exists .serGameWin]} { return 1 }
+  if {[array size ::moderne::niveau::pipes]} { return 1 }
+  if {[info exists ::moderne::oracle::pipe] && $::moderne::oracle::pipe ne {}} { return 1 }
+  foreach t [::moderne::toby::moteursToby] {
+    set n [lindex $t 0]
+    if {[info exists ::moderne::docks::prelance($n)]} { return 1 }
+    if {[info exists ::analysis(pipe$n)] && $::analysis(pipe$n) ne {}} { return 1 }
+  }
+  return 0
+}
+
+### Folder d deleted by a process of its own, Siby not waiting
+proc ::moderne::majtoby::supprimerPlusTard {d} {
+  if {![file exists $d]} { return }
+  if {$::windowsOS} {
+    if {[catch {exec {*}[auto_execok cmd] /c rmdir /s /q [file nativename $d] &}]} { catch {file delete -force $d} }
+  } else {
+    if {[catch {exec rm -rf $d &}]} { catch {file delete -force $d} }
+  }
+}
+
+### Siby's start: an old Toby left by an update (Toby.ancien) deleted
+proc ::moderne::majtoby::nettoyer {} {
+  catch {
+    set d [::moderne::ajout::dossier]
+    foreach x [list [file join $d Toby.ancien]] { supprimerPlusTard $x }
+  }
+}
+
+### The Toby downloaded by Siby: {exe folder}, or {}
+proc ::moderne::majtoby::tobySiby {} {
+  foreach t [::moderne::toby::moteursToby] {
+    set exe [lindex [lindex $::engines(list) [lindex $t 0]] 1]
+    catch {set exe [toAbsPath $exe]}
+    set d [file dirname $exe]
+    if {[file tail $d] eq "Toby" && [file exists $exe] && [file writable [file dirname $d]]} {
+      return [list $exe $d]
+    }
+  }
+  return {}
+}
+
+### Version and variant of the Toby in folder d
+proc ::moderne::majtoby::versionDe {d} {
+  set v {} ; set var {}
+  catch {set c [open [file join $d siby_toby.txt] r] ; lassign [read $c] v var ; close $c}
+  if {$v eq {}} { catch {set c [open [file join $d VERSION] r] ; set v [string trim [read $c]] ; close $c} }
+  if {$v eq {}} { set v 1.0 }
+  if {$var eq {}} {
+    set var [expr {[file isdirectory [file join $d lc0]] ? "full" : "light"}]
+  }
+  return [list $v $var]
+}
+
+proc ::moderne::majtoby::demarrage {} {
+  after cancel ::moderne::majtoby::demarrage
+  after [expr {12 * 3600 * 1000}] ::moderne::majtoby::demarrage
+  if {$::moderne::majsiby::auto ne "1" || [info exists ::env(SIBY_SANS_MAJ)]} { return }
+  verifier 0
+}
+
+proc ::moderne::majtoby::verifier {manuel} {
+  if {[tobySiby] eq {}} { return }
+  set adresse $::moderne::ajout::manifesteToby
+  if {[info exists ::env(SIBY_TOBY_MANIFESTE)]} { set adresse $::env(SIBY_TOBY_MANIFESTE) }
+  if {$adresse eq {}} { return }
+  set f [file join [::moderne::majsiby::dossierTemp] toby_manifest.json]
+  catch {file delete $f}
+  ::moderne::gaby::recuperer $adresse $f [list ::moderne::majtoby::manifesteLu $manuel] 60
+}
+
+proc ::moderne::majtoby::manifesteLu {manuel fichier err} {
+  variable manifeste
+  variable plusTard
+  if {$fichier eq {}} { return }
+  if {[catch {
+    set c [open $fichier r] ; fconfigure $c -encoding utf-8
+    set manifeste [::moderne::json::parse [read $c]]
+    close $c
+  }] || ![dict exists $manifeste version]} { return }
+  set t [tobySiby]
+  if {$t eq {}} { return }
+  lassign [versionDe [lindex $t 1]] vi
+  set v [dict get $manifeste version]
+  # (already downloaded, waiting for the next start)
+  if {[file exists [fichierAttente]]} {
+    # (the version waiting, not the manifest's)
+    set va $v
+    catch {set c [open [fichierAttente] r] ; set va [lindex [read $c] 3] ; close $c}
+    if {$manuel} { pret $va }
+    return
+  }
+  if {[::moderne::majsiby::comparer $v $vi] <= 0} {
+    if {$manuel} { ::moderne::majsiby::annonceSimple [T "Toby est à jour ($vi)." "Toby is up to date ($vi)."] }
+    return
+  }
+  if {!$manuel && [dict exists $plusTard $v] && [clock seconds] - [dict get $plusTard $v] < 3 * 86400} { return }
+  proposer
+}
+
+### A notice at the bottom right, above Siby's own if it is there
+proc ::moderne::majtoby::cadre {} {
+  set w .tobyMaj
+  catch {destroy $w}
+  frame $w -background [::moderne::c surface2] -highlightthickness 1 \
+      -highlightbackground [::moderne::c accent] -padx 14 -pady 10
+  return $w
+}
+proc ::moderne::majtoby::placer {w} {
+  set y -18
+  if {[winfo exists .sibyMaj] && [winfo ismapped .sibyMaj]} {
+    update idletasks
+    set y [expr {-18 - [winfo height .sibyMaj] - 12}]
+  }
+  place $w -in . -relx 1.0 -rely 1.0 -x -18 -y $y -anchor se
+  raise $w
+}
+
+proc ::moderne::majtoby::proposer {} {
+  variable manifeste
+  set v [dict get $manifeste version]
+  set notes [::moderne::json::get $manifeste [expr {$::language eq "F" ? "notes_fr" : "notes_en"}] {}]
+  if {$notes eq {}} { set notes [::moderne::json::get $manifeste notes_en {}] }
+  set w [cadre]
+  label $w.t -background [::moderne::c surface2] -foreground [::moderne::c texteFort] \
+      -font font_Bold -justify left -wraplength 400 -text [T "Toby $v est disponible" "Toby $v is available"]
+  label $w.d -background [::moderne::c surface2] -foreground [::moderne::c texteDoux] \
+      -font font_Small -justify left -wraplength 400 -text [string range $notes 0 600]
+  frame $w.b -background [::moderne::c surface2]
+  ttk::button $w.b.ok -text [T "Mettre à jour" "Update"] -command {destroy .tobyMaj ; ::moderne::majtoby::telecharger}
+  catch {$w.b.ok configure -style Accent.TButton}
+  ttk::button $w.b.non -text [T "Plus tard" "Later"] -command [list ::moderne::majtoby::reporter $v]
+  pack $w.b.non $w.b.ok -side right -padx {6 0}
+  pack $w.t -side top -anchor w
+  if {$notes ne {}} { pack $w.d -side top -anchor w -pady {4 0} }
+  pack $w.b -side top -fill x -pady {8 0}
+  placer $w
+}
+
+proc ::moderne::majtoby::reporter {v} {
+  variable plusTard
+  dict set plusTard $v [clock seconds]
+  catch {destroy .tobyMaj}
+}
+
+### Update: Tools › Add an engine downloads the same variant into the
+### installed Toby's place (see ::moderne::ajout::tobyComposants)
+proc ::moderne::majtoby::telecharger {} {
+  set t [tobySiby]
+  if {$t eq {}} { return }
+  lassign [versionDe [lindex $t 1]] - var
+  catch ::moderne::ajout::ouvrir
+  ::moderne::ajout::telecharger toby $var [lindex $t 1]
+}
+
+### The new Toby unpacked: put in place at the next start
+proc ::moderne::majtoby::pret {v} {
+  set w [cadre]
+  label $w.t -background [::moderne::c surface2] -foreground [::moderne::c texteFort] \
+      -font font_Bold -justify left -wraplength 400 -text [T "Toby $v est prêt" "Toby $v is ready"]
+  frame $w.b -background [::moderne::c surface2]
+  ttk::button $w.b.ok -text [T "Redémarrer Siby" "Restart Siby"] -command {destroy .tobyMaj ; ::moderne::redemarrer}
+  catch {$w.b.ok configure -style Accent.TButton}
+  ttk::button $w.b.non -text [T "Plus tard" "Later"] -command {destroy .tobyMaj}
+  pack $w.b.non $w.b.ok -side right -padx {6 0}
+  pack $w.t -side top -anchor w
+  pack $w.b -side top -fill x -pady {8 0}
+  placer $w
+}
+
+### After the start: the Toby just put in place said
+proc ::moderne::majtoby::annoncerInstalle {} {
+  variable installe
+  if {$installe eq {}} { return }
+  ::moderne::majsiby::annonceSimple [T "✓ Toby $installe installé" "✓ Toby $installe installed"]
+  set installe {}
+}
+
+# (the Toby waiting put in place now: Siby's start, before any engine runs)
+after 30000 {catch ::moderne::majtoby::nettoyer}
+# (two tries: a folder kept locked (antivirus, an Explorer window) froze
+# every start 8 s; tried again at the next start)
+catch {::moderne::majtoby::appliquer 2}

@@ -1383,6 +1383,10 @@ proc ::moderne::prepa::emprunterNotation {} {
       set choisi [expr {[$nb select] eq $f}]
       set pretNotation [list $nb [$nb index $f] [$nb tab $f -text] $choisi]
       $nb forget $f
+      # (the tab in front once the notation is lent: if another one is in
+      # front when it is given back, chosen meanwhile, it stays in front)
+      variable devantPret {}
+      catch {set devantPret [$nb select]}
     } else {
       set pretNotation [list {} 0 [T "Notation" "Notation"] 0]
     }
@@ -1424,7 +1428,8 @@ proc ::moderne::prepa::rendreNotation {} {
   if {$nb ne {} && [winfo exists $nb]} {
     catch {
       if {$i >= [llength [$nb tabs]]} { $nb add $f -text $titre } else { $nb insert $i $f -text $titre }
-      if {$choisi} { $nb select $f }
+      variable devantPret
+      if {$choisi && (![info exists devantPret] || [$nb select] eq $devantPret || [$nb select] eq {})} { $nb select $f }
     }
     catch {raise $f}
   }

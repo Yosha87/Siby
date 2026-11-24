@@ -185,13 +185,50 @@ proc ::moderne::profil::finTelechargement {message nb} {
   variable w
   catch {$w.b.dl configure -state normal}
   set txt "[::utils::thousands $nb] [T "parties" "games"]"
+  set nouv {}
+  catch {set nouv $::moderne::enligne::dl(nouvelles)}
+  if {$nouv ne {}} { append txt " (+[::utils::thousands $nouv])" }
   if {$message ne {}} { append txt " • $message" }
   catch {$w.b.etat configure -text $txt}
-  if {$nb > 0} {
-    set b [::moderne::enligne::base $::moderne::profilNom]
-    if {$b} { catch {::file::SwitchToBase $b} }
+  # (opened as from My databases, its game list shown: it only became
+  # the current database, nothing showed it, 2026-11-17)
+  set f [::moderne::enligne::fichierBase $::moderne::profilNom]
+  if {$nb > 0 && [file exists $f.si4]} {
+    catch {::moderne::mesbases::ouvrirBase [::moderne::mesbases::chemin $f]}
   }
 }
+
+### My online games brought up to date once a day, a little after the
+### start, in the background, when they were downloaded once (as on
+### Lichess, where one's games are always there; Yosha 2026-11-17)
+if {![info exists ::moderne::profil::derniereMaj]} { set ::moderne::profil::derniereMaj {} }
+proc ::moderne::profil::majAuto {} {
+  after cancel ::moderne::profil::majAuto
+  # (Siby left open for days: checked again every 6 hours)
+  after [expr {6 * 3600 * 1000}] ::moderne::profil::majAuto
+  set nom [string trim $::moderne::profilNom]
+  if {$nom eq {} || [info exists ::env(SIBY_SANS_MAJ)]} { return }
+  if {[string trim $::moderne::profilLichess] eq {} && [string trim $::moderne::profilChesscom] eq {}} { return }
+  if {![file exists [::moderne::enligne::fichierBase $nom].si4]} { return }
+  # (only adding: with no keys file the download builds the database
+  # again, the user's comments lost; done only when asked, by the button)
+  if {![file exists [::moderne::enligne::fichierBase $nom].cles]} { return }
+  set jour [clock format [clock seconds] -format %Y-%m-%d]
+  if {$::moderne::profil::derniereMaj eq $jour} { return }
+  set ::moderne::profil::derniereMaj $jour
+  catch {::moderne::journal "My online games: daily update"}
+  ::moderne::enligne::telecharger $nom $::moderne::profilLichess $::moderne::profilChesscom ::moderne::profil::finAuto
+}
+proc ::moderne::profil::finAuto {message nb} {
+  set n 0
+  catch {set n $::moderne::enligne::dl(nouvelles)}
+  catch {::moderne::journal "My online games: $n new ($nb in all) $message"}
+  if {$n > 0} {
+    ::moderne::majsiby::annonceSimple "[T "Mes parties en ligne" "My online games"] : [::utils::thousands $n] [T [expr {$n > 1 ? "nouvelles parties" : "nouvelle partie"}] [expr {$n > 1 ? "new games" : "new game"}]]"
+    catch {::moderne::mesbases::remplir}
+  }
+}
+after 90000 {catch ::moderne::profil::majAuto}
 
 ### Repertoire database of the profile for a colour (white / black), opened
 ### discreetly; 0 if none

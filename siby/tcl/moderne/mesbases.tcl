@@ -73,7 +73,9 @@ proc ::moderne::mesbases::liste {} {
   foreach f $l {
     if {$f in $res || ![file exists $f] || $f in $::moderne::basesRetirees} { continue }
     # (a player's online games: the preparation's own database)
-    if {[catch {::moderne::enligne::estBaseEnLigne $f} oui] == 0 && $oui} { continue }
+    # (except the user's own, My profile's: "My online games")
+    if {[catch {::moderne::enligne::estBaseEnLigne $f} oui] == 0 && $oui
+        && ([catch {::moderne::enligne::estMaBase $f} mien] || !$mien)} { continue }
     lappend res $f
   }
   return $res
@@ -264,6 +266,9 @@ proc ::moderne::nomBase {f} {
   if {$t eq "Siby games" || $t eq "Siby games.si4"} {
     return [::moderne::tr "Mes parties Siby" "My Siby games"]
   }
+  if {![catch {::moderne::enligne::estMaBase $f} mien] && $mien} {
+    return [::moderne::tr "Mes parties en ligne" "My online games"]
+  }
   return $t
 }
 
@@ -361,7 +366,17 @@ proc ::moderne::mesbases::vue {} {
     catch remplir
     return
   }
-  if {[::moderne::disposition::blocLab] ne {} && ![catch superposer ok] && $ok} { return }
+  set bloc [::moderne::disposition::blocLab]
+  set ok 0
+  if {$bloc ne {} && ![catch superposer ok] && $ok} { return }
+  # (the slow way, a layout of its own: why, in siby.log)
+  set pourquoi {}
+  foreach {nom test} {enVue {::moderne::mesbases::enVue} jeu {winfo exists .serGameWin} directVue {::moderne::direct::vueOuverte}
+                      directDessus {::moderne::direct::enSuperposition} plateauVu {winfo ismapped .main.board} blocs {::moderne::lab::blocs}} {
+    set v ? ; catch {set v [uplevel #0 $test]} ; lappend pourquoi "$nom=$v"
+  }
+  foreach lab [::moderne::lab::blocs] { catch {lappend pourquoi "$lab=[winfo ismapped $lab]"} }
+  catch {::moderne::journal "My databases: own layout (Lab [expr {$bloc ne {} ? {there} : {absent}}], laid over: $ok; $pourquoi)"}
   set W [expr {[winfo screenwidth .] - 40}]
   set H [expr {[winfo screenheight .] - 90}]
   ::moderne::disposition::appliquer moderne_mesbases [list [list MainWindowGeometry "${W}x${H}+10+10"] \
@@ -380,7 +395,7 @@ proc ::moderne::mesbases::cacherEchiquier {} {
     }
   }
   catch synchroniser
-  catch remplir
+  catch remplirSiChange
 }
 
 ### My databases laid over the Lab (Yosha 2026-11-06: going to the Lab took
@@ -509,7 +524,10 @@ proc ::moderne::mesbases::ouvrir {} {
   pack $c -side left -fill both -expand 1
   ttk::frame $c.g -padding 8
   $c create window 0 0 -anchor nw -window $c.g -tags grille
-  bind $c <Configure> {::moderne::mesbases::remplir}
+  # (filled again once the size has settled, and only if something shown
+  # changed: every size of the start filled it, 4 times 1.5 to 3 s on
+  # Windows, Yosha 2026-11-17)
+  bind $c <Configure> {::moderne::mesbases::redimensionne}
   # (a press on an empty place, dragged: a frame chooses the cards it
   # touches; Ctrl: adds them)
   foreach x [list $c $c.g] {
@@ -541,7 +559,8 @@ proc ::moderne::mesbases::ouvrir {} {
   # Del: the tile goes away (the file stays); Ctrl+Del: the file is deleted
   bind $c <Delete> {::moderne::mesbases::touche retirer}
   bind $c <Control-Delete> {::moderne::mesbases::touche supprimer}
-  bind $c <MouseWheel> [list $c yview scroll [expr {-1}] units]
+  # (the wheel's direction: it only went up, Yosha 2026-11-17)
+  bind $c <MouseWheel> "$c yview scroll \[expr {%D > 0 ? -1 : 1}\] units"
   bind $c <Button-4> [list $c yview scroll -1 units]
   bind $c <Button-5> [list $c yview scroll 1 units]
   catch {::moderne::repeindre $w}
@@ -553,6 +572,37 @@ proc ::moderne::mesbases::ouvrir {} {
 ### thin lines, the name in the link colour, one line of details, the first
 ### games below (as a study's chapters); folders that fold. The only colour:
 ### the accent, for the names (links) and the database open now.
+proc ::moderne::mesbases::redimensionne {} {
+  variable attenteTaille
+  catch {after cancel $attenteTaille}
+  set attenteTaille [after 150 ::moderne::mesbases::remplirSiChange]
+}
+
+### What the tiles show: their width, the databases, the choice, the
+### filter, the folded folders, the view, the open databases
+proc ::moderne::mesbases::signature {} {
+  variable w
+  variable choisie
+  variable filtre
+  variable replies
+  set o {}
+  for {set i 1} {$i <= [sc_base count total]} {incr i} { if {[sc_base inUse $i]} { lappend o $i [sc_base numGames $i] } }
+  return [list $w [winfo width $w.c] [liste] [expr {[info exists choisie] ? $choisie : {}}] \
+      [expr {[info exists filtre] ? $filtre : {}}] [expr {[info exists replies] ? $replies : {}}] $o [sc_base current] \
+      [expr {[info exists ::moderne::mesbases::compacts] ? $::moderne::mesbases::compacts : {}}] $::moderne::basesRetirees]
+}
+
+### Filled again only if what it shows changed; always when no tile is
+### there (never an empty page, Yosha 2026-11-17)
+proc ::moderne::mesbases::remplirSiChange {} {
+  variable w
+  variable signatureRemplie
+  if {![winfo exists $w.c]} { return }
+  if {[winfo exists $w.c.g] && [llength [winfo children $w.c.g]] > 0
+      && [info exists signatureRemplie] && [signature] eq $signatureRemplie} { return }
+  remplir
+}
+
 proc ::moderne::mesbases::remplir {} {
   variable w
   variable choisie
@@ -561,6 +611,15 @@ proc ::moderne::mesbases::remplir {} {
   catch ::moderne::basesliste::plusTard
   set c $w.c
   if {![winfo exists $c]} { return }
+  # (every folder closed at each start, "Other databases" too: fewer cards
+  # to draw, Yosha 2026-11-17)
+  variable fermesAuDemarrage
+  if {![info exists fermesAuDemarrage]} {
+    set fermesAuDemarrage 1
+    catch {foreach g [concat [nomsGroupes] [list [T "Autres bases" "Other databases"]]] { if {$g ni $replies} { lappend replies $g } }}
+  }
+  variable signatureRemplie
+  catch {set signatureRemplie [signature]}
   set g $c.g
   foreach x [winfo children $g] { destroy $x }
   # (tile -> file: games dragged from the list are dropped on a tile)
@@ -895,7 +954,9 @@ proc ::moderne::mesbases::dessinerCarte {t0 f dessus} {
   set e [ecart]
   set cw [expr {[$c cget -width] - $e}]
   set ch [expr {[$c cget -height] - $e}]
-  set x0 4 ; set y0 2 ; set x1 [expr {$cw}] ; set y1 [expr {$ch - 4}]
+  # (room above for the lift and the outline: lifted, the chosen card's
+  # blue top was cut off, Yosha 2026-11-18)
+  set x0 4 ; set y0 5 ; set x1 [expr {$cw}] ; set y1 [expr {$ch - 4}]
   set lev [expr {$dessus ? 3 : 0}]
   set noir [expr {[info exists ::moderne::theme] && $::moderne::theme eq "clair" ? "#8a857f" : "#000000"}]
   for {set k 7} {$k >= 1} {incr k -1} {
@@ -1086,6 +1147,14 @@ proc ::moderne::mesbases::apercu {f ouverte} {
     return $l
   }
   if {[estPgn $f] && ![string match -nocase *.gz $f] && [file exists $f]} {
+    # (read again only when the file changed: 200 KB per PGN at each fill,
+    # 2 s per fill with 74 databases on Windows, Yosha 2026-11-17)
+    variable apercusPgn
+    set sig {}
+    catch {set sig [list [file mtime $f] [file size $f]]}
+    if {$sig ne {} && [info exists apercusPgn($f)] && [lindex $apercusPgn($f) 0] eq $sig} {
+      return [lindex $apercusPgn($f) 1]
+    }
     if {![catch {
       set h [open $f r]
       fconfigure $h -encoding utf-8
@@ -1105,6 +1174,7 @@ proc ::moderne::mesbases::apercu {f ouverte} {
         lappend l [list [valeur $r White] [valeur $r Black] [valeur $r Event]]
       }
       dict set apercus $f $l
+      if {$sig ne {}} { set apercusPgn($f) [list $sig $l] }
       return $l
     }
   }
@@ -1209,6 +1279,18 @@ proc ::moderne::mesbases::ouvrirBase {f} {
   set ::file::sansListe 0
   if {$versLab} { catch ::moderne::disposition::analyse }
   after idle ::moderne::mesbases::remplir
+  # (the game list shown, its title on this database: the tab stayed on
+  # the notation, its title on the former database, Yosha 2026-11-16)
+  after idle ::moderne::mesbases::montrerListe
+  after 600 ::moderne::mesbases::montrerListe
+}
+
+proc ::moderne::mesbases::montrerListe {} {
+  if {![winfo exists .glistWin]} { catch ::windows::gamelist::Open }
+  set nb {}
+  catch {set nb [::docking::find_tbn .fdockglistWin]}
+  if {$nb ne {}} { catch {$nb select .fdockglistWin} }
+  catch setGamelistTitle
 }
 
 proc ::moderne::mesbases::menu {f X Y} {
@@ -1515,6 +1597,7 @@ proc ::moderne::mesbases::ajouter {{dossier {}}} {
       [list [T "Bases Siby" "Siby databases"] {.si4}] [list PGN {.pgn .PGN}]]]
   if {![llength $fs]} { return }
   ajouterFichiers $fs $dossier
+  return $fs
 }
 
 namespace eval ::moderne::mesbases { variable ajouts {} ; variable nAjouts 0 }

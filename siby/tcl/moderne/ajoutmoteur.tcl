@@ -587,7 +587,7 @@ proc ::moderne::ajout::optionsToby {} {
 
 ### Runs the steps of cle one after the other: each step is a command that
 ### calls ::moderne::ajout::suite cle when it is done
-proc ::moderne::ajout::telecharger {cle {variante {}}} {
+proc ::moderne::ajout::telecharger {cle {variante {}} {tobyDossier {}}} {
   variable enCours
   variable etapes
   if {[info exists enCours($cle)]} { return }
@@ -611,7 +611,9 @@ proc ::moderne::ajout::telecharger {cle {variante {}}} {
           [list installerLeela [file join $dest lc0]]]
     }
     toby {
-      set etapes($cle) [list [list manifesteToby [file join $dest Toby]]]
+      # (an update: into the installed Toby's place, see majsiby.tcl)
+      if {$tobyDossier eq {}} { set tobyDossier [file join $dest Toby] }
+      set etapes($cle) [list [list manifesteToby $tobyDossier]]
     }
   }
   set enCours($cle) 1
@@ -648,6 +650,25 @@ proc ::moderne::ajout::echec {cle err} {
 proc ::moderne::ajout::recuperer {cle url fichier quoi {sha256 {}} {octets 0}} {
   file mkdir [file dirname $fichier]
   file delete -force $fichier.part
+  # (a large file of known size: 4 parts at once, see recupMorceaux)
+  if {$octets >= 100 * 1048576} {
+    recupMorceaux $cle $url $fichier $quoi $sha256 $octets
+    return
+  }
+  recupUne $cle $url $fichier $quoi $sha256 $octets
+}
+
+### After a failed part: the whole file in one connection
+proc ::moderne::ajout::recupReprise {cle url fichier quoi sha256 octets} {
+  etat $cle "$quoi : [T "téléchargement" "downloading"] 0 %" 0
+  if {[catch {recupUne $cle $url $fichier $quoi $sha256 $octets} err]} {
+    echec $cle "$quoi : $err"
+  }
+}
+
+### The file in one connection
+proc ::moderne::ajout::recupUne {cle url fichier quoi {sha256 {}} {octets 0}} {
+  file delete -force $fichier.part
   set cmd [list curl -sSLf --connect-timeout 20 -A "Siby (add an engine)" -o $fichier.part $url]
   if {[catch {open "|$cmd 2>@1" r} p]} { error [T "téléchargement impossible (curl)" "download failed (curl)"] }
   fconfigure $p -blocking 0
@@ -655,6 +676,149 @@ proc ::moderne::ajout::recuperer {cle url fichier quoi {sha256 {}} {octets 0}} {
   set dl($cle) [list $p $fichier $quoi $sha256 $octets {}]
   fileevent $p readable [list ::moderne::ajout::recupLu $cle]
   after 500 [list ::moderne::ajout::recupSuivi $cle]
+}
+
+### A large file in 4 parts downloaded at once (curl -r), then put back
+### together and its sha256 checked (4 connections to Toby's server took
+### about 3 times the data of one from a data centre, 2026-11-23; a home
+### line is often the limit anyway). A part that fails is tried again by
+### curl (--retry); a server that sends the whole file instead of a part
+### (now and then behind Cloudflare): that file is used; another wrong
+### part: the whole file again in one connection. The sha256 is checked
+### in every case
+proc ::moderne::ajout::recupMorceaux {cle url fichier quoi sha256 octets} {
+  variable morceaux
+  set n 4
+  set taille [expr {($octets + $n - 1) / $n}]
+  set parts {}
+  for {set i 0} {$i < $n} {incr i} {
+    set debut [expr {$i * $taille}]
+    set fin [expr {min($octets, $debut + $taille) - 1}]
+    set f $fichier.part$i
+    file delete -force $f
+    set cmd [list curl -sSLf --connect-timeout 20 --retry 3 --retry-delay 2 -A "Siby (add an engine)" -r $debut-$fin -o $f $url]
+    if {[catch {open "|$cmd 2>@1" r} p]} {
+      foreach q $parts { catch {close [lindex $q 0]} }
+      error [T "téléchargement impossible (curl)" "download failed (curl)"]
+    }
+    fconfigure $p -blocking 0
+    lappend parts [list $p $f [expr {$fin - $debut + 1}] {} 0]
+    fileevent $p readable [list ::moderne::ajout::morceauLu $cle $i]
+  }
+  set morceaux($cle) [list $fichier $quoi $sha256 $octets $parts $url]
+  after 500 [list ::moderne::ajout::morceauxSuivi $cle]
+}
+
+proc ::moderne::ajout::morceauxSuivi {cle} {
+  variable morceaux
+  if {![info exists morceaux($cle)]} { return }
+  lassign $morceaux($cle) fichier quoi sha256 octets parts
+  set t 0
+  foreach q $parts { catch {incr t [file size [lindex $q 1]]} }
+  set pct [expr {min(99, int(100.0 * $t / $octets))}]
+  etat $cle "$quoi : [T "téléchargement" "downloading"] $pct % ([format %.0f [expr {$t / 1048576.0}]] / [format %.0f [expr {$octets / 1048576.0}]] Mo)" $pct
+  after 500 [list ::moderne::ajout::morceauxSuivi $cle]
+}
+
+proc ::moderne::ajout::morceauLu {cle i} {
+  variable morceaux
+  if {![info exists morceaux($cle)]} { return }
+  lassign $morceaux($cle) fichier quoi sha256 octets parts url
+  lassign [lindex $parts $i] p f attendu sortie fini
+  append sortie [read $p]
+  lset parts $i 3 $sortie
+  lset morceaux($cle) 4 $parts
+  if {![eof $p]} { return }
+  fconfigure $p -blocking 1
+  set code [catch {close $p} err]
+  set recu -1
+  catch {set recu [file size $f]}
+  if {$code || $recu != $attendu} {
+    # (the other parts stopped, every part file removed but a whole file)
+    unset morceaux($cle)
+    set entier [expr {!$code && $recu == $octets}]
+    foreach q $parts {
+      lassign $q pq fq
+      if {$pq ne $p} { catch {fileevent $pq readable {}} ; catch {exec {*}[expr {$::tcl_platform(platform) eq "windows" ? [list taskkill /F /PID [pid $pq]] : [list kill [pid $pq]]}]} ; catch {close $pq} }
+      if {!($entier && $fq eq $f)} { file delete -force $fq }
+    }
+    catch {::moderne::journal "Siby: $quoi, part $i: [expr {$code ? [string trim $sortie] : "$recu bytes instead of $attendu"}]"}
+    if {$entier} {
+      # (the server sent the whole file instead of the part, now and then
+      # behind Cloudflare: that file is the download, sha256 checked)
+      file rename -force $f $fichier.part
+      etat $cle "$quoi : [T "vérification…" "checking…"]" 99
+      after idle [list ::moderne::ajout::assembler $cle {} {} $fichier $quoi $sha256 $octets]
+      return
+    }
+    # (another failure of a part: the whole file again, one connection, as
+    # before the parts)
+    after idle [list ::moderne::ajout::recupReprise $cle $url $fichier $quoi $sha256 $octets]
+    return
+  }
+  lset parts $i 4 1
+  lset morceaux($cle) 4 $parts
+  foreach q $parts { if {![lindex $q 4]} { return } }
+  # all parts here: put back together into fichier.part (the first part
+  # renamed, the others appended and removed one by one: about 1.25 times
+  # the file on the disk at most), in the background (3 GB copied at once
+  # would hold the window for seconds)
+  unset morceaux($cle)
+  etat $cle "$quoi : [T "assemblage…" "putting together…"]" 99
+  if {[catch {
+    file rename -force [lindex $parts 0 1] $fichier.part
+    set out [open $fichier.part a]
+    fconfigure $out -translation binary
+  } err]} {
+    foreach q $parts { file delete -force [lindex $q 1] }
+    file delete -force $fichier.part
+    echec $cle "$quoi : [T "téléchargement impossible" "download failed"] $err"
+    return
+  }
+  set reste {}
+  foreach q [lrange $parts 1 end] { lappend reste [lindex $q 1] }
+  assembler $cle $out $reste $fichier $quoi $sha256 $octets
+}
+
+### Appends the next part file to out (fcopy in the background), then the
+### checks: size, sha256
+proc ::moderne::ajout::assembler {cle out reste fichier quoi sha256 octets {copie 0} {err {}}} {
+  if {$err ne {}} {
+    catch {close $out}
+    foreach f $reste { file delete -force $f }
+    file delete -force $fichier.part
+    echec $cle "$quoi : [T "téléchargement impossible" "download failed"] $err"
+    return
+  }
+  if {[llength $reste]} {
+    set f [lindex $reste 0]
+    if {[catch {set in [open $f r] ; fconfigure $in -translation binary} e]} {
+      assembler $cle $out $reste $fichier $quoi $sha256 $octets 0 $e
+      return
+    }
+    fcopy $in $out -command [list apply {{cle in f out reste fichier quoi sha256 octets n {e {}}} {
+      catch {close $in}
+      if {$e eq {}} { file delete -force $f ; set reste [lrange $reste 1 end] }
+      ::moderne::ajout::assembler $cle $out $reste $fichier $quoi $sha256 $octets $n $e
+    }} $cle $in $f $out $reste $fichier $quoi $sha256 $octets]
+    return
+  }
+  if {$out ne {}} { close $out }
+  set recu [file size $fichier.part]
+  if {$recu != $octets} {
+    file delete -force $fichier.part
+    echec $cle "$quoi : [T "téléchargement impossible" "download failed"] ($recu / $octets)"
+    return
+  }
+  if {$sha256 ne {}} {
+    if {[catch {sc_gaby sha256 $fichier.part} h] || ![string equal -nocase $h $sha256]} {
+      file delete -force $fichier.part
+      echec $cle "$quoi : [T "fichier abîmé pendant le téléchargement (sha256)" "file damaged during the download (sha256)"]"
+      return
+    }
+  }
+  file rename -force $fichier.part $fichier
+  suite $cle
 }
 
 proc ::moderne::ajout::recupSuivi {cle} {
@@ -897,9 +1061,11 @@ proc ::moderne::ajout::tobyComposants {cle dest v} {
     set choix {}
     variable tobyVariante
     set ordre [expr {[nvidia] && $tobyVariante ne "light" ? {full light core} : {light core}}]
+    # (an update keeps the variant installed)
+    if {$tobyVariante eq "core"} { set ordre {core light} }
     foreach k $ordre {
       set x [::moderne::json::get $pq $k {}]
-      if {$x ne {} && $x ne "null"} { set choix $x ; break }
+      if {$x ne {} && $x ne "null"} { set choix $x ; set variante $k ; break }
     }
     set nom [::moderne::json::get $choix fichier {}]
     if {$nom eq {}} {
@@ -908,12 +1074,34 @@ proc ::moderne::ajout::tobyComposants {cle dest v} {
     }
     variable manifesteToby
     set url [expr {[regexp {^[a-z]+://} $nom] ? $nom : "[string range $manifesteToby 0 [string last / $manifesteToby]]$nom"}]
-    set archive [file join [file dirname $dest] [file tail $nom]]
+    # (the file's name without the link's query, "?sv=…" of a private
+    # link: else no ".zip" at its end, and tar tried to unpack it, 2026-11-23)
+    set archive [file join [file dirname $dest] [file tail [lindex [split $nom ?] 0]]]
+    # (checked or refused, as Siby's own updates)
+    set sha [string tolower [string trim [::moderne::json::get $choix sha256 {}]]]
+    if {![regexp {^[0-9a-f]{64}$} $sha]} {
+      echec $cle [T "fiche de Toby incomplète (sha256)" "incomplete Toby manifest (sha256)"]
+      return
+    }
+    set version [::moderne::json::get $v version {}]
     variable etapes
-    set etapes($cle) [concat [list \
-        [list recuperer $url $archive Toby [::moderne::json::get $choix sha256 {}] [::moderne::json::get $choix taille 0]] \
-        [list deballer $archive [file dirname $dest]] \
-        [list installerToby $dest]] $etapes($cle)]
+    if {[file exists [file join $dest [expr {$::windowsOS ? {toby.exe} : {toby}}]]]} {
+      # Toby already there (it may be running: Windows would not let it be
+      # overwritten, half a Toby was left): unpacked beside it, put in
+      # place at Siby's next start (majsiby.tcl)
+      set maj [file join [file dirname $dest] Toby.maj]
+      catch {file delete -force $maj}
+      set etapes($cle) [concat [list \
+          [list recuperer $url $archive Toby $sha [::moderne::json::get $choix taille 0]] \
+          [list deballer $archive $maj] \
+          [list preparerToby $dest $maj $version $variante]] $etapes($cle)]
+    } else {
+      set etapes($cle) [concat [list \
+          [list recuperer $url $archive Toby $sha [::moderne::json::get $choix taille 0]] \
+          [list deballer $archive [file dirname $dest]] \
+          [list noterToby $dest $version $variante] \
+          [list installerToby $dest]] $etapes($cle)]
+    }
     suite $cle
     return
   }
@@ -942,6 +1130,52 @@ proc ::moderne::ajout::tobyComposants {cle dest v} {
   lappend nouvelles [list installerToby $dest]
   variable etapes
   set etapes($cle) [concat $nouvelles $etapes($cle)]
+  suite $cle
+}
+
+### The version and variant of the Toby in dir (read by majsiby.tcl)
+proc ::moderne::ajout::noterToby {cle dir version variante} {
+  catch {
+    set c [open [file join $dir siby_toby.txt] w]
+    puts $c [list $version $variante]
+    close $c
+  }
+  suite $cle
+}
+
+### The new Toby unpacked in maj: put in dest's place at Siby's next start
+proc ::moderne::ajout::preparerToby {cle dest maj version variante} {
+  set exe [chercherFichier $maj [expr {$::windowsOS ? {toby.exe} : {toby}}]]
+  if {$exe eq {}} {
+    catch {file delete -force $maj}
+    error [T "toby introuvable dans l'archive" "toby not found in the archive"]
+  }
+  executable $exe
+  foreach x {lc0/lc0 stockfish/stockfish} { executable [file join [file dirname $exe] $x] }
+  set nouveau [file dirname $exe]
+  set c [open [file join $nouveau siby_toby.txt] w]
+  puts $c [list $version $variante]
+  close $c
+  set c [open [::moderne::majtoby::fichierAttente] w]
+  puts $c [list $nouveau $dest $maj $version]
+  close $c
+  # no Toby running: put in place now (a restart for Toby looked odd,
+  # Yosha 2026-11-17); else at Siby's next start
+  if {![::moderne::majtoby::actif] && [::moderne::majtoby::appliquer 1]} {
+    # (same path: the engine and its settings stay as they are; registered
+    # if it was not, e.g. a Toby folder left from another Siby: "installed"
+    # but missing from the engines, Windows VM 2026-11-18)
+    set ::moderne::majtoby::installe {}
+    set exeFinal [file normalize [file join $dest [file tail $exe]]]
+    set connu 0
+    foreach e $::engines(list) { if {[file normalize [lindex $e 1]] eq $exeFinal} { set connu 1 } }
+    if {!$connu} { enregistrer "Toby - The Oracle By Yosha" $exeFinal [optionsToby] }
+    etat $cle [T "✓ Toby $version installé" "✓ Toby $version installed"] 100
+    suite $cle
+    return
+  }
+  etat $cle [T "✓ Toby $version prêt : installé au prochain démarrage de Siby" "✓ Toby $version ready: installed at Siby's next start"] 100
+  catch {::moderne::majtoby::pret $version}
   suite $cle
 }
 

@@ -227,7 +227,11 @@ proc ::moderne::disposition::blocLab {} {
   if {![catch {::moderne::mesbases::enVue} v] && $v} { return {} }
   if {[winfo exists .serGameWin]} { return {} }
   if {[winfo exists .jeuCouvre] && [winfo ismapped .jeuCouvre]} { return {} }
-  if {![catch {::moderne::direct::vueOuverte} v] && $v} { return {} }
+  # (the broadcasts' view over the Lab; not "its panel is in some tab
+  # group": on Windows, once the broadcasts had been opened, it always said
+  # so and My databases then rebuilt the whole window each time, the Lab
+  # too after it, 4 to 6 s, Yosha 2026-11-17)
+  if {[winfo exists .directCouvre] && [winfo ismapped .directCouvre]} { return {} }
   # (the broadcasts' list laid over it: under it, not on screen)
   if {![catch {::moderne::direct::enSuperposition} v] && $v} { return {} }
   if {![winfo exists .main.board] || ![winfo ismapped .main.board]} { return {} }
@@ -247,10 +251,11 @@ proc ::moderne::disposition::lab {{page {}}} {
   catch ::moderne::direct::retirerSuperposition
   catch jeuRetirer
   set bloc [blocLab]
-  if {$bloc ne {}} {
+  if {$bloc ne {} && [::moderne::lab::entier $bloc]} {
     ::moderne::lab::montrer $bloc $page
     return
   }
+  if {$bloc ne {}} { catch {::moderne::journal "Siby: a page of the Lab was gone, the Lab built again"} }
   set pageLab $page
   # (a view chosen before the window was shown at startup: My databases,
   # the startup view, does not replace it, see ::moderne::revelerFenetre)
@@ -355,10 +360,19 @@ proc ::moderne::disposition::jeuAvant {} {
   variable finDemarrage [after 3000 {set ::moderne::disposition::demarrage 0}]
   # (rematch: the playing layout is already there)
   variable revanche
-  if {[info exists revanche] && $revanche && [winfo exists .fdockpgnWin]} {
+  # (only if the game panel is really shown: else the layout is built)
+  if {[info exists revanche] && $revanche && [winfo exists .fdockserGameWin] && [winfo ismapped .fdockserGameWin]} {
     set revanche 0
+    catch {::moderne::journal "Siby: playing layout: rematch, the layout kept"}
     return
   }
+  # (checked once the game has started: Yosha 2026-11-16, beta 7 on
+  # Windows, the game panel over the board's corner, the board over the
+  # whole width; not reproduced, so put right and written to siby.log)
+  # (then every 2 s while the game lasts: a break after 4 s stayed, seen
+  # on a slow machine)
+  catch {after cancel $::moderne::disposition::jeuControleId}
+  set ::moderne::disposition::jeuControleId [after 1500 ::moderne::disposition::jeuControleSuite]
   # (a game just ended, its layout not yet given back: a new game starts
   # right away, e.g. an Alter Ego from the Play menu; the layout of before
   # the first game comes back after this one)
@@ -382,11 +396,15 @@ proc ::moderne::disposition::jeuAvant {} {
   variable jeuSup
   if {$jeuSup ne {}} {
     if {![info exists avantJeu]} { set avantJeu {} }
+    catch {::moderne::journal "Siby: playing layout: already laid over the Lab"}
     return
   }
+  set essaiLab "not tried"
   if {![info exists avantJeu]} {
-    if {![catch {jeuSuperposer $moteurs} ok] && $ok} {
+    set essaiLab [expr {[catch {jeuSuperposer $moteurs} ok] ? "error: $ok" : $ok}]
+    if {$essaiLab eq "1"} {
       set avantJeu [lsort -integer $moteurs]
+      catch {::moderne::journal "Siby: playing layout: laid over the Lab"}
       return
     }
     if {$ok ne "0"} { catch {::moderne::journal "Partie (disposition posée sur le Lab) : $ok"} }
@@ -402,7 +420,81 @@ proc ::moderne::disposition::jeuAvant {} {
   set ::moderne::disposition::partGauche 0.66
   set d [description {.fdockpgnWin} {} 0]
   set ::moderne::disposition::partGauche 0.47
+  catch {::moderne::journal "Siby: playing layout: built (laid over the Lab: $essaiLab; layout before kept: [info exists avantJeu])"}
   appliquer moderne_jeu $d 0
+}
+
+### The game panel right of the board (see jeuAvant); otherwise put back
+### and written to siby.log
+proc ::moderne::disposition::jeuGeo {w} {
+  if {![winfo exists $w]} { return "$w -" }
+  return "$w [winfo rootx $w],[winfo rooty $w] [winfo width $w]x[winfo height $w] [winfo ismapped $w]"
+}
+proc ::moderne::disposition::jeuControleSuite {{n 0}} {
+  # (only while the game is played: a finished game's window stays, as a
+  # tab beside the notation, the Lab's divider was put back every 2 s)
+  set finie 0
+  catch {set finie $::moderne::jeu::fini}
+  if {$finie} { return }
+  catch ::moderne::disposition::jeuControle
+  # (the game's window may come a little after: waited for 10 s)
+  if {[winfo exists .serGameWin] || [winfo exists .fdockserGameWin] || $n < 5} {
+    set ::moderne::disposition::jeuControleId [after 2000 [list ::moderne::disposition::jeuControleSuite [incr n]]]
+  }
+}
+
+proc ::moderne::disposition::jeuControle {} {
+  variable jeuSup
+  if {![winfo exists .fdockserGameWin] || ![winfo exists .main.board]} { return }
+  update idletasks
+  set bx1 [expr {[winfo rootx .main.board] + [winfo width .main.board]}]
+  if {[winfo ismapped .fdockserGameWin] && [winfo rootx .fdockserGameWin] >= $bx1 - 2} { return }
+  set sash {}
+  catch {set sash [.pw.pw0 sashpos 0]}
+  set geo [lmap w {.pw .pw.pw0 .jeuCouvre .main.board .fdockserGameWin} { jeuGeo $w }]
+  ::moderne::journal "Siby: game panel not right of the board ([expr {$jeuSup ne {} ? {over the Lab} : {playing layout}}], sash $sash): [join $geo {; }]"
+  set W [winfo width .pw]
+  set H [winfo height .pw]
+  # (the board alone, no pane on its right: the playing layout was not
+  # built, Yosha 2026-11-19 with the board over the whole width and the game
+  # panel hidden; moving the divider did nothing. A group is made right of
+  # the board and the game panel and the notation go into it; the game goes
+  # on, nothing is rebuilt)
+  if {$sash eq {} || ![winfo ismapped .fdockserGameWin]} { catch {jeuReparer} r ; catch {::moderne::journal "Siby: game panel group made right of the board: $r"} }
+  catch {.pw.pw0 sashpos 0 [expr {min(int($W * 0.6), max(int($W * 0.66), $H - 40))}]}
+  if {$jeuSup ne {} && [winfo exists .jeuCouvre]} {
+    catch {
+      place .jeuCouvre -in [dict get $jeuSup lab] -x 0 -y 0 -relwidth 1 -relheight 1
+      raise .jeuCouvre
+      raise .fdockpgnWin
+      foreach t [.jeuCouvre.nb tabs] { raise $t }
+    }
+  }
+  catch {::moderne::docks::retenirSash .pw.pw0 0}
+  update idletasks
+  ::moderne::journal "Siby: game panel put back: [join [lmap w {.main.board .fdockserGameWin} { jeuGeo $w }] {; }]"
+}
+
+### A group right of the board with the game panel (and the notation) in it
+proc ::moderne::disposition::jeuReparer {} {
+  set nb [::docking::find_tbn .fdockmain]
+  if {$nb eq {}} { return "board not in a group" }
+  set g [::docking::find_tbn .fdockserGameWin]
+  # (already in a group of its own beside the board: shown)
+  if {$g ne {} && $g ne $nb && [winfo ismapped $g]} {
+    $g select .fdockserGameWin
+    return "already in $g"
+  }
+  set n [::docking::add_tbn $nb e]
+  foreach f {.fdockserGameWin .fdockpgnWin} {
+    set src [::docking::find_tbn $f]
+    if {$src eq {} || $src eq $n} { continue }
+    $src select $f
+    ::docking::move_tab $src $n
+  }
+  catch {$n select .fdockserGameWin}
+  update idletasks
+  return "$n: [$n tabs]"
 }
 
 ### End of the game (its engine freed): the layout of before the game and

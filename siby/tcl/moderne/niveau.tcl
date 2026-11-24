@@ -55,6 +55,8 @@ namespace eval ::moderne::niveau {
   # all came out between 2750 and 3150, 2026-11-01): the number is still
   # computed and saved, but shown as "2900+"
   variable plafond 2900
+  variable plafondA 2500    ;# from the moves alone (no rating): "2500+" from here
+  variable plancherA 1600   ;# from the moves alone: "under 1600" below
   # floor: the lowest FIDE rating (1400 since 2024) and the bottom of the
   # calibration sample; below it the corrected number means nothing (it
   # could read 250): shown as "1400−"
@@ -88,6 +90,11 @@ namespace eval ::moderne::niveau {
   # per position, Toby 2026-11-12): used for a game only when every answer
   # of its review said "model H6b"; {} until it is measured
   variable calibreH6b {}
+  # Toby 2 ("info string toby version 2.x"): its own calibration and its
+  # players' ratings settings, measured with its final weights (Toby
+  # session, 2026-11-19); {} until then: Toby 1.0's are used
+  variable calibreToby2 {}
+  variable priorEloToby2 {}
   # The players' ratings as part of the estimate (Toby session, not adopted
   # yet, 2026-11-12): per place where the game was played (otb, lichess,
   # chesscom) and time control ("otb Classical"...), a dict of:
@@ -122,6 +129,7 @@ namespace eval ::moderne::niveau {
   variable modeles          ;# modeles(cle) = the models of the game's answers (H6b, T5)
   variable versionToby {}   ;# version Toby gave at uci ({}: an older Toby)
   variable pause 0          ;# 1: nothing new sent (a game: the engine's turn)
+  variable revoir {}        ;# timer: moves waiting for the review's values looked at again
 }
 
 ### The calibration of the Toby in use
@@ -148,9 +156,18 @@ proc ::moderne::niveau::calibration {{cle {}}} {
     return $calibreH6b
   }
   if {$versionToby eq {}} { return $calibreAncien }
+  variable calibreToby2
+  if {$calibreToby2 ne {} && [estToby2]} { return $calibreToby2 }
   # (a version that is not a plain number: it exists since 1.0)
   if {[catch {package vcompare $versionToby 1.0} r]} { return $calibre }
   return [expr {$r >= 0 ? $calibre : $calibreAncien}]
+}
+
+### Is the Toby in use version 2 or later ("2.0", "2.0 beta"…)?
+proc ::moderne::niveau::estToby2 {} {
+  variable versionToby
+  if {![regexp {^([0-9]+)} [string trim $versionToby] -> majeur]} { return 0 }
+  expr {$majeur >= 2}
 }
 
 proc ::moderne::niveau::T {fr en} { return [::moderne::tr $fr $en] }
@@ -248,6 +265,10 @@ proc ::moderne::niveau::suivre {cle eloB eloN source cadence {rappel {}} {option
       set notes($cle,$cote) [prior $mu $sd]
     }
     set compte($cle,$cote) 0
+    # (Toby 2's level head: the plain sum of the moves' log-likelihoods,
+    # its own prior and correction applied in estimationNiveau)
+    variable sommes
+    set sommes($cle,$cote) [lrepeat [llength $::moderne::niveau::grille] 0.0]
   }
   set faits($cle) 0
   set rappels($cle) $rappel
@@ -293,7 +314,10 @@ proc ::moderne::niveau::derive {reglage r} {
 ### The setting of the ratings for place lieu and time control cad, {} if none
 proc ::moderne::niveau::reglageElo {lieu cad} {
   variable priorElo
-  if {[dict exists $priorElo "$lieu $cad"]} { return [dict get $priorElo "$lieu $cad"] }
+  variable priorEloToby2
+  set pe $priorElo
+  if {$priorEloToby2 ne {} && [estToby2]} { set pe $priorEloToby2 }
+  if {[dict exists $pe "$lieu $cad"]} { return [dict get $pe "$lieu $cad"] }
   return {}
 }
 
@@ -365,6 +389,8 @@ proc ::moderne::niveau::coups {cle depart ucis} {
   }
   set faits($cle) $n
   set dejaUcis($cle) $ucis
+  variable dejaDepart
+  set dejaDepart($cle) $depart
   suivant
 }
 
@@ -417,6 +443,10 @@ proc ::moderne::niveau::oublier {cle} {
   array unset ::moderne::niveau::distrib $cle,*
   array unset ::moderne::niveau::maias $cle,*
   array unset ::moderne::niveau::tobys $cle,*
+  array unset ::moderne::niveau::sommes $cle,*
+  catch {unset ::moderne::niveau::modeJeu($cle)}
+  catch {unset ::moderne::niveau::calJeu($cle)}
+  catch {unset ::moderne::niveau::dejaDepart($cle)}
   catch {unset ::moderne::niveau::total($cle)}
   catch {unset ::moderne::niveau::dejaUcis($cle)}
   set f {}
@@ -431,6 +461,7 @@ proc ::moderne::niveau::estimation {cle cote {brut 0}} {
   variable compte
   variable grille
   if {![info exists notes($cle,$cote)]} { return {} }
+  if {[estNiveau $cle]} { return [estimationNiveau $cle $cote $brut] }
   set l $notes($cle,$cote)
   set m [tcl::mathfunc::max {*}$l]
   set s 0.0 ; set s1 0.0 ; set s2 0.0
@@ -470,10 +501,18 @@ proc ::moderne::niveau::estimation {cle cote {brut 0}} {
 
 ### A level as shown: "2900+" above the ceiling, else the number (with "≈ "
 ### when approx)
-proc ::moderne::niveau::affiche {r {approx 0}} {
+proc ::moderne::niveau::affiche {r {approx 0} {source {}}} {
   variable plafond
   variable plancher
   if {![string is integer -strict $r]} { return $r }
+  # (from the moves alone, no number at the ends: one game cannot tell
+  # 2500 from 2800, Yosha and Toby 2026-11-22)
+  if {$source eq "a"} {
+    variable plafondA
+    variable plancherA
+    if {$r >= $plafondA} { return "$plafondA+" }
+    if {$r < $plancherA} { return [T "moins de $plancherA" "under $plancherA"] }
+  }
   if {$r > $plafond} { return "$plafond+" }
   if {$r < $plancher} { return "$plancher−" }
   return [expr {$approx ? "≈ $r" : $r}]
@@ -484,16 +523,26 @@ proc ::moderne::niveau::texte {cle cote} {
   variable minCoups
   set e [estimation $cle $cote]
   if {$e eq {} || [lindex $e 2] < $minCoups} { return {} }
-  return [affiche [lindex $e 0] 1]
+  return [affiche [lindex $e 0] 1 [lindex $e 3]]
 }
 
 ### Tooltip of the estimate
 proc ::moderne::niveau::bulle {cle cote} {
   set e [estimation $cle $cote]
   if {$e eq {}} { return {} }
-  lassign $e r sd n
+  lassign $e r sd n source
   variable plafond
   variable plancher
+  variable plafondA
+  variable plancherA
+  if {$source eq "a" && $r >= $plafondA} {
+    return "[T "Niveau de jeu estimé dans cette partie : $plafondA+\nUne partie ne permet pas de distinguer les niveaux plus hauts.\nd'après $n coups (Toby)" \
+              "Level of play estimated in this game: $plafondA+\nOne game cannot tell upper levels apart.\nfrom $n moves (Toby)"][noteEpoque]"
+  }
+  if {$source eq "a" && $r < $plancherA} {
+    return "[T "Niveau de jeu estimé dans cette partie : moins de $plancherA\nUne partie ne permet pas de distinguer les niveaux plus bas.\nd'après $n coups (Toby)" \
+              "Level of play estimated in this game: under $plancherA\nOne game cannot tell lower levels apart.\nfrom $n moves (Toby)"][noteEpoque]"
+  }
   if {$r < $plancher} {
     return "[T "Niveau de jeu estimé dans cette partie : sous $plancher, le plancher du classement FIDE\n(pas de nombre plus précis en dessous)\nd'après $n coups" \
               "Level of play estimated in this game: below $plancher, the FIDE rating floor\n(no finer number below it)\nfrom $n moves"][noteEpoque]"
@@ -502,8 +551,11 @@ proc ::moderne::niveau::bulle {cle cote} {
     return "[T "Niveau de jeu estimé dans cette partie : au-dessus de $plafond\n(Toby ne distingue pas les niveaux au-delà : les parties humaines s'arrêtent vers $plafond)\nd'après $n coups" \
               "Level of play estimated in this game: above $plafond\n(Toby cannot tell levels apart beyond that: human games stop around $plafond)\nfrom $n moves"][noteEpoque]"
   }
-  return "[T "Niveau de jeu estimé dans cette partie : $r, à environ 250 points près\nd'après $n coups (Toby)" \
-            "Level of play estimated in this game: $r, within about 250 points\nfrom $n moves (Toby)"][noteEpoque]"
+  # (no margin: "to about 930 points" read as "we know nothing" while the
+  # estimate is often right; Lichess and chess.com show none, Yosha
+  # 2026-11-22; to come back once Toby's uncertainty is known calibrated)
+  return "[T "Niveau de jeu estimé dans cette partie : $r\nd'après $n coups (Toby)" \
+            "Level of play estimated in this game: $r\nfrom $n moves (Toby)"][noteEpoque]"
 }
 
 ### For a game played before 2018 (Date tag of the current game): the level
@@ -642,7 +694,7 @@ proc ::moderne::niveau::demanderMaia {cle i pos elo} {
 ### ("dist", Toby 2026-10-29)?
 proc ::moderne::niveau::avecDist {} {
   variable capacites
-  foreach w [array names capacites] { if {"likelihood-dist" in $capacites($w)} { return 1 } }
+  foreach w [array names capacites] { if {"likelihood-dist" in $capacites($w) || [niveauServi $w]} { return 1 } }
   return 0
 }
 
@@ -825,6 +877,12 @@ proc ::moderne::niveau::emprunter {} {
     set pret($w) 0
     fileevent $p readable [list ::moderne::niveau::lire $w]
     # ("uci" again: its capabilities, read before "readyok")
+    # (Toby 2: the level on Standard, its Accurate given back afterwards)
+    if {[::moderne::toby::aOption $n "Toby 2 Product"]} {
+      catch {puts $p "setoption name Toby 2 Product value Standard"}
+      # (prepared again, with isready, at the panel's next go)
+      catch {unset ::moderne::toby::produitPrepare($n)}
+    }
     catch {puts $p stop ; puts $p "setoption name Precision value Fast" ; puts $p "setoption name Mode value Prediction" ; puts $p "setoption name Stockfish Threads value 1" ; puts $p "setoption name Maia Threads value [filsMaia]" ; puts $p uci ; puts $p isready ; flush $p}
     return $w
   }
@@ -1013,15 +1071,27 @@ proc ::moderne::niveau::suivant {} {
     # "go" starts an lc0 in Toby, 1.6 GB of graphics memory each; the
     # others only get "toby likelihood" and never start one, Toby
     # 2026-11-08)
-    set k 0
-    if {$w ne [porteGo]} {
-      set k -1
-      set j 0
-      foreach r $file {
-        if {[lindex $r 7] ni {go maia}} { set k $j ; break }
-        incr j
+    # (Toby 2's level head in a review: a move waits for the annotation's
+    # Stockfish values of its position, attendValeurs)
+    set k -1
+    set j 0
+    set porte [expr {$w eq [porteGo]}]
+    set attend 0
+    foreach r $file {
+      if {$porte || [lindex $r 7] ni {go maia}} {
+        if {![attendValeurs $w $r]} { set k $j ; break }
+        set attend 1
       }
-      if {$k < 0} { continue }
+      incr j
+    }
+    if {$k < 0} {
+      # (moves waiting for the annotation's values: looked at again in a
+      # moment, whatever brings the values)
+      variable revoir
+      if {$attend && (![info exists revoir] || $revoir eq {})} {
+        set revoir [after 1000 {set ::moderne::niveau::revoir {} ; ::moderne::niveau::suivant}]
+      }
+      continue
     }
     set r [lindex $file $k]
     set file [lreplace $file $k $k]
@@ -1064,6 +1134,7 @@ proc ::moderne::niveau::porteGo {} {
 ### The "toby likelihood" command of request r for process w
 proc ::moderne::niveau::commandeProba {w r} {
   lassign $r cle cote pos uci source cadence ply type elo
+  if {[modeNiveau $w $cle $cadence]} { return [commandeNiveau $w $r] }
   # (with "dist": Maia's distribution at the game's rating too, for the
   # good moves; the same Stockfish search)
   # (the rating: the request's, moved to the front for a good move,
@@ -1336,7 +1407,7 @@ proc ::moderne::niveau::lancer {} {
   while {[info exists caches($k)] && [info exists pipes($caches($k))]} { incr k }
   lappend avant TOBY_SF_CACHE_FILE [expr {[info exists ::env(TOBY_SF_CACHE_FILE)] ? $::env(TOBY_SF_CACHE_FILE) : "\0"}]
   catch {set ::env(TOBY_SF_CACHE_FILE) [file nativename [::moderne::toby::fichierCache toby_sf_cache_$k]]}
-  set ok [catch {set p [open "| [list [lindex $e 1]] [lindex $e 2]" r+]}]
+  set ok [catch {set p [open "| [list [lindex $e 1]] [lindex $e 2][::sibyErreursMoteur]" r+]}]
   if {!$ok} { ::moderne::prioriteBasse $p }
   foreach {v x} $avant { if {$x eq "\0"} { catch {unset ::env($v)} } else { set ::env($v) $x } }
   catch {cd $ancien}
@@ -1355,11 +1426,26 @@ proc ::moderne::niveau::lancer {} {
   # memory and the level stalled, 2026-11-04)
   envoyer $w "setoption name Precision value Fast"
   envoyer $w "setoption name Mode value Prediction"
+  set appareil Auto
   foreach opt [lindex $e 8] {
     lassign $opt nom val
-    if {$nom in {MultiPV UCI_AnalyseMode {White Rating} {Black Rating} {Stockfish Threads} Threads Precision Mode}} { continue }
+    # (Toby 2 Product: the level's processes stay on Standard; with
+    # Accurate each would put its own network and Leela on the graphics card,
+    # up to 4 during a review; the level does no search, Toby 2026-11-20)
+    if {$nom in {MultiPV UCI_AnalyseMode {White Rating} {Black Rating} {Stockfish Threads} Threads Precision Mode {Toby 2 Product}}} { continue }
+    if {$nom eq "Network Device"} { set appareil $val ; continue }
     envoyer $w "setoption name $nom value $val"
   }
+  # (Toby 2's network on the graphics card when there is an NVIDIA one,
+  # unless CPU was chosen in Toby's options: Auto follows the product,
+  # Standard here, so the processor. A review with 3 processes on a T4:
+  # 34.8 s on the processor, 28.5 s on the card, 3.4 GB of its memory,
+  # Yosha 2026-11-22: "Carte graphique par défaut". Without a card that
+  # answers, Toby goes back to the processor by itself)
+  if {$appareil eq "Auto" && ![catch {::moderne::ajout::nvidia} g] && $g eq "1"} { set appareil GPU }
+  if {$appareil ne "Auto"} { envoyer $w "setoption name Network Device value $appareil" }
+  variable appareils
+  set appareils($w) $appareil
   envoyer $w "setoption name Stockfish Threads value 1"
   # (Maia's share of the cores: the environment variables above are not
   # read by Toby's package, the UCI option is)
@@ -1419,17 +1505,36 @@ proc ::moderne::niveau::lire {w} {
     }
     if {[lrange $mots 0 3] eq {info string toby capabilities}} {
       variable capacites
-      lappend capacites($w) [lindex $mots 4]
+      # (every word: one capability per line, or several on one line, or
+      # none: Toby's "core" package, without Maia, Toby 2026-11-18)
+      if {![info exists capacites($w)]} { set capacites($w) {} }
+      lappend capacites($w) {*}[lrange $mots 4 end]
       continue
     }
     if {[string trim $l] eq "uciok"} {
       variable uciok
       set uciok($w) 1
+      # a Toby that says what it can do, without "likelihood" (no Maia):
+      # no level of play, at once, rather than 90 s without an answer
+      variable capacites
+      if {[info exists capacites($w)] && [lsearch -glob $capacites($w) likelihood*] < 0 && "level" ni $capacites($w)} {
+        variable sansReponse 1
+        variable file {}
+        catch {::moderne::journal "Siby level: this Toby has no likelihood (capabilities: $capacites($w)), level of play off"}
+      }
       # (in a review, the other processes once this one said it runs no
       # batches)
       variable paralleles
       if {[info exists paralleles] && $paralleles > 1} { after idle ::moderne::niveau::prechauffer }
       after idle ::moderne::niveau::suivant
+    }
+    if {[lrange $mots 0 4] eq {info string toby level calibration}} {
+      lireCalibration $w $mots
+      continue
+    }
+    if {[lrange $mots 0 4] eq {info string toby level display}} {
+      lireAffichage $w $mots
+      continue
     }
     if {[lrange $mots 0 4] eq {info string toby batch end}} {
       variable lots
@@ -1463,6 +1568,83 @@ proc ::moderne::niveau::lire {w} {
       } else {
         variable tobys
         set tobys($cle,$ply) $d
+        variable modeJeu
+        if {[info exists modeJeu($cle)] && $modeJeu($cle) eq "level"} {
+          # (the head's distribution at the game's rating takes Maia's place
+          # for the "!", Yosha 2026-11-18; the thresholds are re-tuned later)
+          variable maias
+          set maias($cle,$ply) $d
+          if {[dict exists $d $uci]} {
+            variable probas
+            set probas($cle,$ply) [dict get $d $uci]
+          }
+        }
+      }
+      continue
+    }
+    if {[lrange $mots 0 3] eq {info string toby level}} {
+      # (Toby 2's level head: answered like "toby likelihood", see there)
+      switch -- [lindex $mots 4] {
+        error {
+          catch {::moderne::journal "Siby level: $w -> [string range $l 0 200]"}
+          # (on the graphics card, an error is most likely its memory full
+          # (another program, a small card): Toby does not fall back by
+          # itself, Toby 2026-11-22. The process goes to the processor and
+          # the move is asked again, once; else it would be left out of
+          # the level without a word)
+          variable appareils
+          variable reessais
+          if {[lindex $mots 5] ne "stopped" && [info exists appareils($w)] && $appareils($w) eq "GPU" && $courants($w) ne {}} {
+            set appareils($w) CPU
+            envoyer $w "setoption name Network Device value CPU"
+            set k [lrange $courants($w) 0 1],[lindex $courants($w) 6]
+            if {![info exists reessais($k)]} {
+              set reessais($k) 1
+              variable reprendre
+              set reprendre($w) $courants($w)
+            }
+            catch {::moderne::journal "Siby level: $w on the processor from now on, after an error on the graphics card"}
+          }
+          continue
+        }
+        unavailable {
+          niveauIndisponible $w $l
+          continue
+        }
+        end {
+          noterTemps $w $type
+          # (a move to ask again after an error on the graphics card: back
+          # at the head of the queue, not counted)
+          variable reprendre
+          if {[info exists reprendre($w)]} {
+            variable file
+            set file [linsert $file 0 $reprendre($w)]
+            unset reprendre($w)
+            variable attentes
+            catch {after cancel $attentes($w)}
+            set courants($w) {}
+            after idle ::moderne::niveau::suivant
+            continue
+          }
+          set m [lindex $mots 6]
+          if {$type in {compter proba} && $m ne {}} { noterModele $cle $m }
+          variable attentes
+          catch {after cancel $attentes($w)}
+          set courants($w) {}
+          set enLot [lotSuivant $w]
+          if {[info exists rappels($cle)] && $rappels($cle) ne {}} {
+            catch {uplevel #0 $rappels($cle)}
+          }
+          if {!$enLot} { after idle ::moderne::niveau::suivant }
+          continue
+        }
+      }
+      if {[lindex $mots 4] eq $uci && $type eq "compter"} {
+        set rs {} ; set ls {}
+        foreach {r q} [lrange $mots 5 end] {
+          if {[string is integer -strict $r] && [string is double -strict $q]} { lappend rs $r ; lappend ls $q }
+        }
+        if {[llength $rs] >= 2} { ajouterNiveau $cle $cote $rs $ls }
       }
       continue
     }
@@ -1694,6 +1876,373 @@ proc ::moderne::niveau::restants {cle} {
   return $n
 }
 
+################################################################################
+### Toby 2's level head ("toby level", docs/INTERFACES.md, Toby's
+### docs/SIBY_LEVEL_HEAD.md, 2026-11-19): no Maia. Toby announces
+### "level" in its capabilities, then one calibration line per group of time
+### controls (classical; rapid and blitz together), keyed by the model's name.
+### Per move: "toby level move <uci> [best <cp> played <cp>] [cadence c]
+### [dist <elo>]" after the position before the move; the answer is the
+### move's natural log-likelihood every 50 points from 1200 to 3000, then an
+### end line naming the model. Siby sums each side's curves, S(E), and applies
+### the head's own estimators: E_A (the moves only) and E_R (with the player's
+### rating). A game is computed with one method from its first move to its
+### last; a Toby without "level" keeps "toby likelihood" (T5).
+################################################################################
+
+namespace eval ::moderne::niveau {
+  variable calNiveau        ;# calNiveau(model,group) = dict field -> values
+  array set calNiveau {}
+  variable modeleNiveau     ;# modeleNiveau(w) = model of w's calibration lines
+  array set modeleNiveau {}
+  variable niveauKo         ;# niveauKo(w) = 1: w cannot serve "toby level"
+  array set niveauKo {}
+  variable niveauIndispo 0  ;# 1: Toby said "toby level unavailable" (all processes)
+  variable modeJeu          ;# modeJeu(cle) = level | t5, fixed at the game's first request
+  array set modeJeu {}
+  variable calJeu           ;# calJeu(cle) = the calibration of the game's group
+  array set calJeu {}
+  variable sommes           ;# sommes(cle,cote) = S(E) on grille
+  array set sommes {}
+}
+
+### The head's group of a Toby time control
+proc ::moderne::niveau::groupeNiveau {cadence} {
+  return [expr {[string tolower $cadence] eq "classical" ? "classical" : "rapidblitz"}]
+}
+
+### "info string toby level calibration model M group G grid … use_er …"
+### (one line per group; the numbers are read, never written in Siby: they
+### change with each training of the head)
+proc ::moderne::niveau::lireCalibration {w mots} {
+  variable calNiveau
+  variable modeleNiveau
+  variable niveauKo
+  if {[lindex $mots 5] eq "error"} {
+    set niveauKo($w) 1
+    catch {::moderne::journal "Siby level: $w has no level head calibration: toby likelihood used"}
+    return
+  }
+  set cles {model group grid ea_tau ea_mean ea_sd ea_corr ea_coef knots bounds er_tau er_s er_drift c_er c_ea sd_scale use_ea use_er
+            ea_stretch ea_coef_review ea_stretch_review ea_cap_high ea_cap_low}
+  set d [dict create]
+  set k {}
+  foreach m [lrange $mots 5 end] {
+    # (a field this Siby does not know yet, "word_word": a field of its own,
+    # never words added to the field before it; values are numbers or
+    # single words, "level", "spl", "toby2-level-v1")
+    if {$m in $cles || [regexp {^[a-z]+(_[a-z0-9]+)+$} $m]} { set k $m ; dict set d $k {} ; continue }
+    if {$k ne {}} { dict lappend d $k $m }
+  }
+  foreach c {model group ea_tau ea_mean ea_sd ea_coef knots bounds} {
+    if {![dict exists $d $c] || [dict get $d $c] eq {}} {
+      catch {::moderne::journal "Siby level: $w calibration line without $c, ignored"}
+      return
+    }
+  }
+  set modele [dict get $d model]
+  # (the display fields of the same model and group, from their own line,
+  # whichever came first)
+  variable affNiveau
+  if {[info exists affNiveau($modele,[dict get $d group])]} { set d [dict merge $d $affNiveau($modele,[dict get $d group])] }
+  set calNiveau($modele,[dict get $d group]) $d
+  set modeleNiveau($w) $modele
+  catch {::moderne::journal "Siby level: $w level head $modele, group [dict get $d group]"}
+}
+
+### Does process w serve "toby level"?
+proc ::moderne::niveau::niveauServi {w} {
+  variable capacites
+  variable niveauKo
+  variable niveauIndispo
+  if {$niveauIndispo || [info exists niveauKo($w)]} { return 0 }
+  return [expr {[info exists capacites($w)] && "level" in $capacites($w)}]
+}
+
+### The calibration of group g for process w's model ({} if not read yet)
+proc ::moderne::niveau::calibrationNiveau {w g} {
+  variable calNiveau
+  variable modeleNiveau
+  if {![info exists modeleNiveau($w)] || ![info exists calNiveau($modeleNiveau($w),$g)]} { return {} }
+  return $calNiveau($modeleNiveau($w),$g)
+}
+
+### Is game cle computed by the level head? Fixed at its first request to
+### process w (the same method from the first move to the last)
+proc ::moderne::niveau::modeNiveau {w cle cadence} {
+  variable modeJeu
+  if {[info exists modeJeu($cle)]} { return [expr {$modeJeu($cle) eq "level"}] }
+  set mode t5
+  if {[niveauServi $w]} {
+    set mode level
+    # (a group switched back to Toby 1.0 in the calibration file)
+    set cal [calibrationNiveau $w [groupeNiveau $cadence]]
+    if {$cal ne {} && [dict exists $cal use_ea] && [dict get $cal use_ea] ne "level"} { set mode t5 }
+  }
+  set modeJeu($cle) $mode
+  catch {::moderne::journal "Siby level: game $cle by [expr {$mode eq "level" ? "Toby's level head" : "toby likelihood"}]"}
+  return [expr {$mode eq "level"}]
+}
+
+proc ::moderne::niveau::estNiveau {cle} {
+  variable modeJeu
+  return [expr {[info exists modeJeu($cle)] && $modeJeu($cle) eq "level"}]
+}
+
+### The "toby level" command of request r for process w
+proc ::moderne::niveau::commandeNiveau {w r} {
+  lassign $r cle cote pos uci source cadence ply type elo
+  variable opts
+  foreach o {eloDist eloPartie} {
+    if {$elo eq {} && [info exists opts($cle)] && [dict exists $opts($cle) $o]} {
+      set elo [dict get $opts($cle) $o]
+    }
+  }
+  set c "toby level move $uci[valeursBilan $pos $uci $ply] cadence [string tolower $cadence]"
+  if {[string is integer -strict $elo] && $elo > 0} { append c " dist $elo" }
+  return $c
+}
+
+### Does request r wait for the review's Stockfish values? A level-head move
+### of the game being annotated, while the annotation runs and has not
+### valued its position yet (it is sent then, best and played; the
+### annotation over, or another game: sent without, Toby searches itself)
+proc ::moderne::niveau::attendValeurs {w r} {
+  lassign $r cle cote pos uci source cadence ply type
+  if {$type ne "compter" || ![string match bilan:* $cle]} { return 0 }
+  if {![info exists ::moderne::bilan::annotFinie] || $::moderne::bilan::annotFinie} { return 0 }
+  if {![info exists ::moderne::bilan::cle] || $::moderne::bilan::cle ne $cle} { return 0 }
+  variable modeJeu
+  if {[info exists modeJeu($cle)] ? $modeJeu($cle) ne "level" : ![niveauServi $w]} { return 0 }
+  if {![info exists ::moderne::oracle::positions]} { return 0 }
+  if {![::moderne::oracle::dansPlage $ply]} { return 0 }
+  return [expr {[valeursBilan $pos $uci $ply] eq {}}]
+}
+
+### The review's Stockfish values of ply (best move, move played), mover's
+### point of view, mates ±10000: " best <cp> played <cp>", or {} when the
+### annotation has not reached the position yet (Toby then searches it
+### itself) or is about another game
+proc ::moderne::niveau::valeursBilan {pos uci ply} {
+  set o ::moderne::oracle
+  if {![info exists ${o}::positions] || ![info exists ${o}::evals($ply)] || ![info exists ${o}::scores($ply)]} { return {} }
+  set positions [set ${o}::positions]
+  if {$ply >= [llength $positions] || [lindex $positions $ply 1] ne $uci} { return {} }
+  # (the same game: the moves before ply are the annotation's)
+  set avant {}
+  regexp { moves (.*)$} $pos -> avant
+  set siens {}
+  for {set k 0} {$k < $ply} {incr k} { lappend siens [lindex $positions $k 1] }
+  if {[join $avant] ne [join $siens]} { return {} }
+  set scores [set ${o}::scores($ply)]
+  if {![dict exists $scores $uci]} { return {} }
+  set best [lindex [set ${o}::evals($ply)] 0]
+  set joue [dict get $scores $uci]
+  if {![string is integer -strict $best] || ![string is integer -strict $joue]} { return {} }
+  if {[lindex $positions $ply 3] eq "black"} { set best [expr {-$best}] ; set joue [expr {-$joue}] }
+  return " best $best played $joue"
+}
+
+### Adds a move's curve (ratings rs, natural log-likelihoods ls) to side
+### cote's S(E)
+proc ::moderne::niveau::ajouterNiveau {cle cote rs ls} {
+  variable sommes
+  variable compte
+  variable grille
+  if {![info exists sommes($cle,$cote)]} { return }
+  set l {}
+  foreach v $sommes($cle,$cote) q [interpoler $rs $ls $grille] { lappend l [expr {$v + $q}] }
+  set sommes($cle,$cote) $l
+  incr compte($cle,$cote)
+}
+
+### "toby level unavailable (…)": the games begun with the head start again
+### with "toby likelihood"
+proc ::moderne::niveau::niveauIndisponible {w l} {
+  variable niveauIndispo 1
+  variable courants
+  variable file
+  variable modeJeu
+  catch {::moderne::journal "Siby level: $w -> [string range $l 0 200]: toby likelihood used"}
+  set r $courants($w)
+  set courants($w) {}
+  variable attentes
+  catch {after cancel $attentes($w)}
+  foreach cle [array names modeJeu] {
+    if {$modeJeu($cle) eq "level"} { recommencer $cle }
+  }
+  after idle ::moderne::niveau::suivant
+}
+
+### Game cle computed again from its first move (its method chosen again)
+proc ::moderne::niveau::recommencer {cle} {
+  variable infos
+  variable rappels
+  variable opts
+  variable dejaUcis
+  variable dejaDepart
+  if {![info exists infos($cle)] || ![info exists dejaUcis($cle)]} { return }
+  lassign $infos($cle) source cadence eloB eloN
+  set r $rappels($cle)
+  set o [expr {[info exists opts($cle)] ? $opts($cle) : {}}]
+  set u $dejaUcis($cle)
+  set d [expr {[info exists dejaDepart($cle)] ? $dejaDepart($cle) : "startpos"}]
+  oublier $cle
+  suivre $cle $eloB $eloN $source $cadence $r $o
+  coups $cle $d $u
+}
+
+### The calibration of game cle: the one of its answers' model and group
+proc ::moderne::niveau::calibrationJeu {cle} {
+  variable calJeu
+  variable calNiveau
+  variable modeles
+  variable infos
+  if {[info exists calJeu($cle)]} { return $calJeu($cle) }
+  if {![info exists modeles($cle)] || ![info exists infos($cle)]} { return {} }
+  set g [groupeNiveau [lindex $infos($cle) 1]]
+  set m [lindex $modeles($cle) 0]
+  if {![info exists calNiveau($m,$g)]} { return {} }
+  # (kept with the game: a review read back later needs no running Toby)
+  set calJeu($cle) $calNiveau($m,$g)
+  return $calJeu($cle)
+}
+
+### basis(r) = 1, r', (r' - k1)+, (r' - k2)+, (r' - k3)+ with r' = r
+### bounded
+proc ::moderne::niveau::baseNiveau {r cal} {
+  lassign [dict get $cal bounds] lo hi
+  set r [expr {min(max(double($r), $lo), $hi)}]
+  set b [list 1.0 $r]
+  foreach k [dict get $cal knots] { lappend b [expr {max(0.0, $r - $k)}] }
+  return $b
+}
+
+proc ::moderne::niveau::produit {a b} {
+  set s 0.0
+  foreach x $a y $b { if {$x ne {} && $y ne {}} { set s [expr {$s + $x * $y}] } }
+  return $s
+}
+
+### Posterior mean and spread of S(E) / tau with a normal prior N(mu, sd)
+### (sd "flat": no prior)
+proc ::moderne::niveau::posterieure {S tau mu sd} {
+  variable grille
+  set L {}
+  foreach e $grille v $S {
+    set x [expr {$v / double($tau)}]
+    if {$sd ne "flat"} { set x [expr {$x - 0.5 * (($e - $mu) / double($sd)) ** 2}] }
+    lappend L $x
+  }
+  set m [tcl::mathfunc::max {*}$L]
+  set s 0.0 ; set s1 0.0 ; set s2 0.0
+  foreach e $grille v $L {
+    set p [expr {exp($v - $m)}]
+    set s [expr {$s + $p}]
+    set s1 [expr {$s1 + $p * $e}]
+    set s2 [expr {$s2 + $p * $e * $e}]
+  }
+  set x [expr {$s1 / $s}]
+  return [list $x [expr {sqrt(max(0.0, $s2 / $s - $x * $x))}]]
+}
+
+### Estimate of side cote of game cle by the level head: {rating sd moves}
+### or {}; E_R (with the player's rating) where Siby uses the ratings
+### (over-the-board games, rated sides), else E_A (the moves only)
+proc ::moderne::niveau::estimationNiveau {cle cote brut} {
+  variable sommes
+  variable compte
+  variable infos
+  if {![info exists sommes($cle,$cote)]} { return {} }
+  set cal [calibrationJeu $cle]
+  if {$cal eq {}} { return {} }
+  set n $compte($cle,$cote)
+  set R 0
+  catch {set R [lindex $infos($cle) [expr {$cote eq "B" ? 2 : 3}]]}
+  set k [expr {[dict exists $cal sd_scale] ? [dict get $cal sd_scale] : 1.0}]
+  set er [expr {[avecElo $cle $cote] && [string is integer -strict $R] && $R > 0 && [dict exists $cal er_tau] && [dict exists $cal er_drift] \
+                && (![dict exists $cal use_er] || [dict get $cal use_er] eq "level")}]
+  if {$er} {
+    set s [dict get $cal er_s]
+    lassign [posterieure $sommes($cle,$cote) [dict get $cal er_tau] $R $s] m sx
+    if {$brut} { return [list [expr {round($m)}] [expr {round($sx)}] $n] }
+    set e [expr {$m - [produit [dict get $cal er_drift] [baseNiveau $R $cal]]}]
+    return [list [expr {round($e)}] [expr {round($k * $sx)}] $n r]
+  }
+  lassign [posterieure $sommes($cle,$cote) [dict get $cal ea_tau] [dict get $cal ea_mean] [dict get $cal ea_sd]] x sx
+  if {$brut} { return [list [expr {round($x)}] [expr {round($sx)}] $n] }
+  lassign [eaDepuisX $cal $x [string match bilan:* $cle]] - e pente
+  # (4th: "a", from the moves alone with Toby's display ends (ea_cap_high,
+  # ea_cap_low); none without them, as before)
+  set source {}
+  if {[dict exists $cal ea_cap_high] && [dict exists $cal ea_cap_low]} {
+    set source a
+    variable plafondA [dict get $cal ea_cap_high]
+    variable plancherA [dict get $cal ea_cap_low]
+  }
+  set v [expr {round($e)}]
+  # (the ends decided on the value itself, not on its rounding: 2499.6
+  # stays a number, 1599.6 is under 1600)
+  if {$source eq "a"} {
+    if {$e < $plafondA && $v >= $plafondA} { set v [expr {$plafondA - 1}] }
+    if {$e < $plancherA && $v >= $plancherA} { set v [expr {$plancherA - 1}] }
+  }
+  return [list $v [expr {round(abs($pente) * $sx * $k)}] $n $source]
+}
+
+### "info string toby level display model M group G ea_stretch … ea_cap_low
+### 1600" (Toby 2026-11-22: the E_A display fields on a line of their own,
+### the calibration lines unchanged for the Sibys already out): kept by
+### model and group, merged into that calibration
+proc ::moderne::niveau::lireAffichage {w mots} {
+  variable affNiveau
+  variable calNiveau
+  set d [dict create]
+  set k {}
+  foreach m [lrange $mots 5 end] {
+    if {$m in {model group} || [regexp {^[a-z]+(_[a-z0-9]+)+$} $m]} { set k $m ; dict set d $k {} ; continue }
+    if {$k ne {}} { dict lappend d $k $m }
+  }
+  if {![dict exists $d model] || ![dict exists $d group]} {
+    catch {::moderne::journal "Siby level: $w display line without model or group, ignored"}
+    return
+  }
+  set c [dict get $d model],[dict get $d group]
+  set d [dict remove $d model group]
+  set affNiveau($c) $d
+  if {[info exists calNiveau($c)]} { set calNiveau($c) [dict merge $calNiveau($c) $d] }
+  catch {::moderne::journal "Siby level: $w display fields for $c: [dict keys $d]"}
+}
+
+### E_A from the posterior mean x (Toby's frozen display fields,
+### ea_display_fields.json 2026-11-22): E_A = coef · basis(x), with
+### ea_coef_review in a review when present; then, when Toby sends a
+### stretch, shown = clip(ea_mean + k (E_A - ea_mean), bounds), k =
+### ea_stretch_review in a review, ea_stretch otherwise. Without those
+### fields, as before. {E_A shown slope}
+proc ::moderne::niveau::eaDepuisX {cal x revue} {
+  set c [dict get $cal ea_coef]
+  if {$revue && [dict exists $cal ea_coef_review] && [llength [dict get $cal ea_coef_review]] == [llength $c]} { set c [dict get $cal ea_coef_review] }
+  if {[dict exists $cal ea_corr] && [dict get $cal ea_corr] eq "lin"} {
+    set e [expr {[lindex $c 0] + [lindex $c 1] * $x}]
+    set pente [lindex $c 1]
+  } else {
+    set e [produit $c [baseNiveau $x $cal]]
+    # (the slope at x, inside the bounds)
+    lassign [dict get $cal bounds] lo hi
+    set xb [expr {min(max($x, $lo), $hi)}]
+    set pente [lindex $c 1]
+    foreach kn [dict get $cal knots] ck [lrange $c 2 end] { if {$xb > $kn} { set pente [expr {$pente + $ck}] } }
+  }
+  set cleK [expr {$revue ? "ea_stretch_review" : "ea_stretch"}]
+  if {![dict exists $cal $cleK] || ![string is double -strict [dict get $cal $cleK]]} { return [list $e $e $pente] }
+  set k [dict get $cal $cleK]
+  set m [dict get $cal ea_mean]
+  lassign [dict get $cal bounds] lo hi
+  set montre [expr {min(max($m + $k * ($e - $m), $lo), $hi)}]
+  return [list $e $montre [expr {$pente * $k}]]
+}
+
 ### End Siby
 
 ### Saves what is known of game cle (all its moves computed) in file f, to
@@ -1707,7 +2256,11 @@ proc ::moderne::niveau::sauver {cle f} {
   set d [dict create version 1 faits $faits($cle) infos $infos($cle) \
       opts [expr {[info exists opts($cle)] ? $opts($cle) : {}}] \
       total [expr {[info exists total($cle)] ? $total($cle) : 0}]]
-  foreach t {notes compte probas distrib maias tobys} {
+  foreach t {modeJeu calJeu modeles} {
+    variable $t
+    if {[info exists ${t}($cle)]} { dict set d $t [set ${t}($cle)] }
+  }
+  foreach t {notes compte probas distrib maias tobys sommes} {
     variable $t
     set l {}
     foreach k [array names $t $cle,*] { lappend l [string range $k [string length $cle,] end] [set ${t}($k)] }
@@ -1741,9 +2294,14 @@ proc ::moderne::niveau::charger {cle f {rappel {}}} {
   set opts($cle) [dict get $d opts]
   set total($cle) [dict get $d total]
   set rappels($cle) $rappel
-  foreach t {notes compte probas distrib maias tobys} {
+  foreach t {notes compte probas distrib maias tobys sommes} {
     variable $t
+    if {![dict exists $d $t]} { continue }
     foreach {k v} [dict get $d $t] { set ${t}($cle,$k) $v }
+  }
+  foreach t {modeJeu calJeu modeles} {
+    variable $t
+    if {[dict exists $d $t]} { set ${t}($cle) [dict get $d $t] }
   }
   return 1
 }

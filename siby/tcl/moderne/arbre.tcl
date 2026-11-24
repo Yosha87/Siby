@@ -153,7 +153,7 @@ proc ::moderne::arbre::demarrer {e} {
   }
   set ancien [pwd]
   catch {cd [lindex $e 3]}
-  set ok [catch {set pipe [open "| [list [lindex $e 1]] [lindex $e 2]" r+]} err]
+  set ok [catch {set pipe [open "| [list [lindex $e 1]] [lindex $e 2][::sibyErreursMoteur]" r+]} err]
   catch {cd $ancien}
   if {$ok} {
     $w.etat configure -text "[T "Impossible de lancer le moteur" "Cannot start the engine"] : $err"

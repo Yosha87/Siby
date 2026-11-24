@@ -186,8 +186,11 @@ Lines and the Calculator options, is on toby-dev's branch
   `info string Toby: ...` line says `calculator Leela|Stockfish`
   (Toby: commit a55d6f2, sealed test v2).
 - `Precision` (`Accurate` default, `Fast`; replaces `Calculator`, which
-  Toby still accepts): Accurate = Leela in Classical with an NVIDIA GPU,
-  Stockfish otherwise; Fast = Stockfish always. Siby sends it to Toby (analysis
+  Toby still accepts): Accurate = Leela calculates, in Classical with an
+  NVIDIA GPU, otherwise the same as Fast (so both are the same in Rapid and
+  Blitz); Fast = Stockfish calculates, guided by Leela's raw policy (one
+  Leela evaluation per move, GPU or CPU), Stockfish alone only when Leela is
+  missing or fails (Toby 1.0). Siby sends it to Toby (analysis
   and games); the choice « Précis / Rapide »
   is in Toby's settings, shown only with an NVIDIA card
   (`::moderne::toby::precision`, saved).
@@ -244,6 +247,41 @@ Maia and its own network; the answer format is the same.)
   `stockfish/`). Siby registers `Toby/toby(.exe)` as "Toby - The Oracle By
   Yosha".
 
+## Toby 2's level head in Siby (`toby level`, 2026-11-19)
+
+Engine side: Toby's `docs/SIBY_LEVEL_HEAD.md`. Siby side: `siby/tcl/moderne/niveau.tcl`
+(section "Toby 2's level head").
+
+- A Toby that says `info string toby capabilities level` is asked
+  `toby level move <uci> [best <cp> played <cp>] cadence <c> [dist <elo>]`
+  instead of `toby likelihood`. Without `level`, after
+  `info string toby level calibration error …` or `toby level unavailable`,
+  Siby uses `toby likelihood` (T5) as before; a game begun with the head is
+  then computed again from its first move.
+- One method per game, fixed at its first request (`modeJeu`): every move of
+  a game comes from the same model. A group whose calibration says
+  `use_ea toby1` is computed with T5.
+- Calibration lines (`info string toby level calibration model … group …`) are
+  read by field name and kept per model and group; nothing of them is
+  written in Siby. The calibration a game used is saved with it (a review
+  read back needs no running Toby).
+- Values: in a review, each move waits until the annotation has valued its
+  position, then goes with `best` (Stockfish's best move, 1M nodes, MultiPV 3)
+  and `played` (the move played, its own search when it is not among the 3),
+  mover's point of view, mates ±10000. Outside a review, after the
+  annotation, or for another game: no values, and Toby searches itself.
+- `dist <elo>` (the game's rating in a review): the head's distribution gives
+  the played move's probability and replaces Maia's for the "!".
+- Estimate: each side's S(E), the sum of its curves (PCHIP onto Siby's
+  10-point grid), then Toby's formulas: E_A (moves only) by default, E_R
+  (with the player's rating) where Siby uses the ratings (over-the-board,
+  rated sides). Interval: ±1.96 sd (the tooltip's "within about N points").
+- Tests: `niveau_tete` (formulas against Python's figures, a game end to end,
+  saved and read back), `niveau_tete_ko` / `niveau_tete_cal` (fallbacks),
+  `bilan_tete` (a whole review, every move sent with values),
+  `bilan_liste_tete`; the fake Toby speaks it with `TOBY_NIVEAU=1`
+  (`outils/toby/toby_factice.py`).
+
 ## Gaby → Toby
 
 - Toby's sealed test sources (Lichess 2025-09, TWIC issues 800-899) must
@@ -286,5 +324,27 @@ after start, then every 12 hours (`siby/tcl/moderne/majsiby.tcl`):
   `outils/manifeste_siby.sh "notes FR" "notes EN"` (writes
   `dist/siby_manifest.json` with the sha256 and sizes), upload the two
   packages, then the manifest last.
-- Toby will follow the same pattern (toby.tribychess.org) once it is
-  published.
+- Toby follows the same pattern (toby.tribychess.org), see below.
+
+## Toby updates from Siby (Siby 1.0 beta 7)
+
+- Siby reads `https://toby.tribychess.org/toby_manifest.json` a little
+  after start, then every 12 hours, and from Help › Check for updates,
+  when the registered Toby is one Siby downloaded (its program in a folder
+  named `Toby`).
+- Installed version: `Toby/siby_toby.txt` (written by Siby: `version
+  variant`), else `Toby/VERSION` (Toby's own, one line such as `2.0`),
+  else `1.0`. Versions compare by number as Siby's (`2.0` > `1.0`,
+  `2.0 beta` < `2.0`).
+- A newer `version`: a notice (Update / Later). Update downloads the same
+  variant (`full`, `light`, `core`; `full` only with an NVIDIA card), with
+  its `sha256` required and checked, unpacks it beside the old Toby
+  (`Toby.maj`), and puts it in the old one's place at Siby's next start,
+  before any Toby runs. The program's path does not change.
+- What Toby's packages must keep: one top folder `Toby/` with
+  `toby(.exe)` in it; `id name Toby - The Oracle By Yosha` (Siby names the
+  engine from it); a `VERSION` file in `Toby/` is welcome. The manifest
+  keeps its format (`version`, `notes_fr`, `notes_en`, `windows` /
+  `linux` → `core` / `light` / `full` → `fichier`, `sha256`, `taille`);
+  `notes_fr` / `notes_en` are shown in the notice (600 characters at
+  most). New file names for each version (the old ones may stay).

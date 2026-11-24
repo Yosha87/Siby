@@ -203,6 +203,8 @@ proc ::moderne::bilan::lancer {} {
   # the engines of the analysis panels wait (paused, in their place) until
   # the end of the review: one engine at a time on the graphics card
   ::moderne::occupation::pauserTout bilan
+  # (a Toby 2 in Accurate: closed for the review, back afterwards)
+  catch {::moderne::toby::libererCarte}
   bind $w <Destroy> {if {"%W" eq ".bilanWin"} { ::moderne::bilan::ferme }}
   set cle {}
   # (the review's times, for review.log: start, end of each part)
@@ -423,7 +425,7 @@ proc ::moderne::bilan::baseLive {} {
 proc ::moderne::bilan::autresEnTetes {} {
   set l {}
   foreach {t v} [sc_game tags get Extra] {
-    if {$t ni {WhiteLevel BlackLevel Annotator LevelMethod}} { lappend l "$t \"$v\"" }
+    if {$t ni {WhiteLevel BlackLevel WhiteLevelSource BlackLevelSource Annotator LevelMethod}} { lappend l "$t \"$v\"" }
   }
   return $l
 }
@@ -464,7 +466,11 @@ proc ::moderne::bilan::enregistrer {} {
   foreach {c t} {B WhiteLevel N BlackLevel} {
     set e {}
     if {$cle ne {}} { set e [::moderne::niveau::estimation $cle $c] }
-    if {$e ne {} && [lindex $e 2] > 0} { lappend tags "$t \"[lindex $e 0]\"" }
+    if {$e ne {} && [lindex $e 2] > 0} {
+      lappend tags "$t \"[lindex $e 0]\""
+      # (from the moves alone: kept, so that a saved review shows "2500+" too)
+      if {[lindex $e 3] eq "a"} { lappend tags "${t}Source \"moves\"" }
+    }
   }
   set m [lindex $::engines(list) [::moderne::oracle::moteurDefaut] 0]
   lappend tags "Annotator \"Siby ([string trim "$m, Toby" ", "])\""
@@ -506,7 +512,7 @@ proc ::moderne::bilan::depuisCache {} {
 ### another one (or none, before 2026-11-12) is made again, its levels
 ### having been computed differently (Yosha 2026-11-12: the rating as the
 ### starting point in over-the-board classical, the recomputed calibration)
-set ::moderne::bilan::methodeNiveau 2026-11-12c
+set ::moderne::bilan::methodeNiveau 2026-11-19
 
 ### The review saved in the game, shown without computing: 1 if done
 proc ::moderne::bilan::instantane {} {
@@ -560,9 +566,12 @@ proc ::moderne::bilan::instantane {} {
   catch courbe
   set niv {}
   foreach {c t} {B WhiteLevel N BlackLevel} {
-    set v {}
-    foreach {x y} [sc_game tags get Extra] { if {$x eq $t} { set v $y } }
-    set txt [expr {[string is integer -strict $v] ? [::moderne::niveau::affiche $v 1] : "–"}]
+    set v {} ; set src {}
+    foreach {x y} [sc_game tags get Extra] {
+      if {$x eq $t} { set v $y }
+      if {$x eq "${t}Source" && $y eq "moves"} { set src a }
+    }
+    set txt [expr {[string is integer -strict $v] ? [::moderne::niveau::affiche $v 1 $src] : "–"}]
     $f.niv$c configure -text $txt
     lappend niv $txt
   }
@@ -858,6 +867,8 @@ proc ::moderne::bilan::fin {} {
   set ::moderne::oracle::fournisseur {}
   # (the panel's Toby lent to the review goes back before the panels resume)
   catch ::moderne::niveau::rendre
+  # (the Toby 2 in Accurate closed for the review comes back)
+  catch ::moderne::toby::rendreCarte
   # (back to one Toby for the level of play outside the review)
   set ::moderne::niveau::paralleles 1
   # (the review's extra Toby processes closed at once: 3.5 to 5 GB each on
@@ -1116,15 +1127,28 @@ proc ::moderne::bilan::zeitnot {} {
 ### ended in Stockfish's group, with no line in siby.log at the start: moved
 ### afterwards. Not while the preparation borrows the notation (that would
 ### switch pages under the user's feet); at most once a second
-proc ::moderne::bilan::verifierPlace {} {
+proc ::moderne::bilan::verifierPlace {{force 0}} {
   variable dernierControle
   set t [clock milliseconds]
-  if {[info exists dernierControle] && $t - $dernierControle < 1000} { return }
+  if {!$force && [info exists dernierControle] && $t - $dernierControle < 1000} { return }
   set dernierControle $t
   if {!$::docking::USE_DOCKING || ![winfo exists .fdockbilanWin]} { return }
   set g [groupeNotation]
-  if {$g eq {} || [lindex $g 1]} { return }
-  if {[::docking::find_tbn .fdockbilanWin] ne [lindex $g 0]} { placerOnglet }
+  if {$g eq {}} { return }
+  set ici [::docking::find_tbn .fdockbilanWin]
+  # (next to an engine: moved even while the notation is lent; Yosha
+  # 2026-11-14, the review in Stockfish's group after a broadcast and a
+  # game, beta 6, nothing in siby.log)
+  set moteur [expr {$ici ne {} && [winfo exists $ici] && [llength [lsearch -all -glob [$ici tabs] *analysisWin*]]}]
+  if {[lindex $g 1] && !$moteur} { return }
+  if {$ici ne [lindex $g 0]} { placerOnglet }
+}
+
+### Checked again once a layout, a page or the broadcasts' cover changed
+proc ::moderne::bilan::verifierPlusTard {} {
+  if {![winfo exists .fdockbilanWin]} { return }
+  after cancel {catch {::moderne::bilan::verifierPlace 1}}
+  after 400 {catch {::moderne::bilan::verifierPlace 1}}
 }
 
 proc ::moderne::bilan::maj {} {
@@ -1247,15 +1271,30 @@ proc ::moderne::bilan::niveauMaj {} {
       }
       continue
     }
-    lassign $e moy sd n
+    lassign $e moy sd n source
     # (few moves or a wide spread: shown as rough; while computing, the
     # estimate so far, in grey)
     # (spread of the posterior itself, before the level correction)
     # (always "≈": the level is an estimate, within about 250 points; the
     # saved review shows it so too, Yosha's battery 2026-11-02)
     set approx 1
-    $f.niv$c configure -text [::moderne::niveau::affiche $moy $approx] \
+    $f.niv$c configure -text [::moderne::niveau::affiche $moy $approx $source] \
         -foreground [expr {$fini ? [::moderne::c texte] : [::moderne::c texteDoux]}]
+    # (from the moves alone, at the ends: no number, Yosha 2026-11-22)
+    set pa $::moderne::niveau::plafondA
+    set ba $::moderne::niveau::plancherA
+    if {$source eq "a" && $moy >= $pa} {
+      catch {::utils::tooltip::Set $f.niv$c "[T \
+          "$pa+ • $n coups mesurés • Une partie ne permet pas de distinguer les niveaux plus hauts." \
+          "$pa+ • $n moves measured • One game cannot tell upper levels apart."][::moderne::niveau::noteEpoque]"}
+      continue
+    }
+    if {$source eq "a" && $moy < $ba} {
+      catch {::utils::tooltip::Set $f.niv$c "[T \
+          "Moins de $ba • $n coups mesurés • Une partie ne permet pas de distinguer les niveaux plus bas." \
+          "Under $ba • $n moves measured • One game cannot tell lower levels apart."][::moderne::niveau::noteEpoque]"}
+      continue
+    }
     set pl $::moderne::niveau::plafond
     set pb $::moderne::niveau::plancher
     if {$moy < $pb} {
@@ -1271,16 +1310,16 @@ proc ::moderne::bilan::niveauMaj {} {
       continue
     }
     # (over-the-board classical with the player's rating: said so, Toby
-    # session's wording, 2026-11-12)
+    # session's wording, 2026-11-12; no margin, Yosha 2026-11-22)
     if {[::moderne::niveau::avecElo $cle $c]} {
       catch {::utils::tooltip::Set $f.niv$c "[T \
-          "$moy ± $sd • $n coups mesurés • part du classement de la partie (parties sur l'échiquier seulement) ; les coups peuvent l'en éloigner beaucoup" \
-          "$moy ± $sd • $n moves measured • uses the player's rating as a starting point (over-the-board games only); the moves can move the estimate far from it"][::moderne::niveau::noteEpoque]"}
+          "$moy • $n coups mesurés • part du classement de la partie (parties sur l'échiquier seulement) ; les coups peuvent l'en éloigner beaucoup" \
+          "$moy • $n moves measured • uses the player's rating as a starting point (over-the-board games only); the moves can move the estimate far from it"][::moderne::niveau::noteEpoque]"}
       continue
     }
     catch {::utils::tooltip::Set $f.niv$c "[T \
-        "$moy ± $sd • $n coups mesurés • d'après Toby, pas l'Elo de la partie" \
-        "$moy ± $sd • $n moves measured • from Toby, not the game's ratings"][::moderne::niveau::noteEpoque]"}
+        "$moy • $n coups mesurés • d'après Toby, pas l'Elo de la partie" \
+        "$moy • $n moves measured • from Toby, not the game's ratings"][::moderne::niveau::noteEpoque]"}
   }
   # (a broadcast game: the levels by the players' names follow the review's,
   # since the game is no longer followed live)

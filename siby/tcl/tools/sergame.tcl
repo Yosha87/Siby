@@ -330,7 +330,9 @@ namespace eval sergame {
     global tr ::sergame::chosenOpening ::sergame::isOpening ::tacgame::openingList ::sergame::openingMovesList ::sergame::openingMovesHash ::sergame::openingMoves ::sergame::outOfOpening
 
     # Siby: playing layout (clocks above the notation)
-    catch {::moderne::disposition::jeuAvant}
+    if {[catch {::moderne::disposition::jeuAvant} err]} {
+      catch {::moderne::journal "Siby: playing layout failed: $err\n[string range $::errorInfo 0 600]"}
+    }
 
     set ::sergame::engine $n
 

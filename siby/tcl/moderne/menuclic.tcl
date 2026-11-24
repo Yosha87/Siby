@@ -23,15 +23,46 @@ proc ::moderne::menuclic::T {fr en} { return [::moderne::tr $fr $en] }
 
 ### Paste: a FEN becomes the position, a PGN the game (several games: the
 ### import window)
+### The import window with the text pasted and why it was not read (an
+### error in the PGN: shown, Yosha 2026-11-18)
+proc ::moderne::menuclic::importerAvecErreur {texte err} {
+  importPgnGame
+  catch {
+    .importWin.pane.edit.text delete 0.0 end
+    .importWin.pane.edit.text insert end $texte
+    .importWin.pane.err.text delete 0.0 end
+    .importWin.pane.err.text insert end $err
+  }
+}
+
 proc ::moderne::menuclic::coller {} {
   set texte {}
-  catch {set texte [string trim [clipboard get]]}
+  catch {set texte [clipboard get]}
+  # (characters a copy from a site or Windows brings: non-breaking and
+  # zero-width spaces, byte order mark, CR; with one in front, the moves
+  # were not recognised and the import window opened, Yosha 2026-11-18)
+  set texte [string trim [string map [list \u00a0 " " \u202f " " \u2007 " " \u200b {} \u200c {} \u200d {} \ufeff {} \r {}] $texte]]
   if {$texte eq {}} { bell ; return }
+  # (lines of spaces emptied; the blank lines between tags taken out: a
+  # Lichess study copied from the browser has one after each tag, and a
+  # blank line ends the tags in PGN, Yosha 2026-11-18)
+  regsub -all -line {^[ \t]+$} $texte {} texte
+  while {[regsub -all {(\[[^\]\n]*\])\n\n+(?=\[)} $texte "\\1\n" texte]} {}
+  # (one game whose moves end without a result, as a study's chapter: "*"
+  # added, else the import stops on "result missing")
+  if {[regexp -all {\[Event } $texte] <= 1 && ![regexp {(1-0|0-1|1/2-1/2|\*)\s*$} $texte]} { append texte " *" }
   if {[regexp {^[pnbrqkPNBRQK1-8]+(/[pnbrqkPNBRQK1-8]+){7}\s+[wb]} $texte]} {
     pasteFEN
     return
   }
-  if {[regexp {\[Event |\[White |^1\.\s*[a-hNBRQKO]} $texte] && [regexp -all {\[Event } $texte] <= 1} {
+  # (moves in any form Siby reads: tried, the clipboard's game kept aside)
+  set lisible 0
+  if {[regexp -all {\[Event } $texte] <= 1} {
+    sc_game push
+    if {![catch {sc_game import $texte} essai] && ([sc_game info halfmoves] > 0 || [regexp {\[(Event|White) } $texte])} { set lisible 1 }
+    sc_game pop
+  }
+  if {$lisible || ([regexp {\[Event |\[White |^1\.\s*[a-hNBRQKO]} $texte] && [regexp -all {\[Event } $texte] <= 1)} {
     # a game on screen: merge into it (as ChessBase) or replace it
     set remplacer 0
     if {[sc_game info halfmoves] > 0 || ![sc_pos isAt end]} {
@@ -51,19 +82,33 @@ proc ::moderne::menuclic::coller {} {
     sc_game push
     if {[catch {sc_game import $texte} err]} {
       sc_game pop
-      importPgnGame
+      importerAvecErreur $texte $err
       return
     }
     sc_game pop
     setTrialMode 0
     sc_game new
-    sc_game import $texte
+    set resultat [sc_game import $texte]
     sc_move start
     updateBoard -pgn
     catch {::windows::gamelist::Refresh}
+    # (read with warnings, e.g. an illegal move: what could be read is
+    # pasted, and the PGN's error said, Yosha 2026-11-18)
+    if {![string match "*no errors or warnings*" $resultat]} {
+      set ligne [lindex [lsearch -all -inline -not -regexp [split $resultat \n] {^\s*$|Errors/warnings}] 0]
+      catch {::moderne::majsiby::annonceSimple "PGN : [string range $ligne 0 160]"}
+      catch {::moderne::journal "Paste: $resultat"}
+    }
     return
   }
-  importPgnGame
+  # (not read as one game: the import window, with the text and the reason)
+  set err {}
+  if {[regexp -all {\[Event } $texte] <= 1} {
+    sc_game push
+    catch {sc_game import $texte} err
+    sc_game pop
+  }
+  importerAvecErreur $texte $err
 }
 
 ### Paste a game over a game: "fusion", "remplacer" or "annuler"
@@ -214,7 +259,8 @@ proc ::moderne::menuclic::notation {win} {
   $m add command -label [T "Supprimer les coups qui suivent" "Delete the moves after"] -accelerator "Alt+C" -command ::game::Truncate
   menu $m.nettoyer -tearoff 0
   $m.nettoyer add command -label [T "Variantes" "Variations"] -command {::game::Strip variations .pgnWin}
-  $m.nettoyer add command -label [T "Commentaires" "Comments"] -command {::game::Strip comments .pgnWin}
+  $m.nettoyer add command -label [T "Commentaires texte" "Text comments"] -command {::moderne::commentaire::nettoyer texte}
+  $m.nettoyer add command -label [T "Tous les commentaires" "All comments"] -command {::game::Strip comments .pgnWin}
   foreach {quoi fr en} {symboles "Symboles (!, ?…)" "Symbols (!, ?…)" evaluations "Évaluations (±, =…)" "Evaluations (±, =…)"
                         marques "Flèches et cases" "Arrows and squares" citations "Citations de parties" "Game quotations"
                         temps "Temps des coups" "Move times"} {

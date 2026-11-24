@@ -944,6 +944,13 @@ proc ::moderne::montrerQuandPret {limite} {
   }
   # (the Lab built at startup: its game list must be there)
   if {[llength [::moderne::lab::blocs]] && ![winfo exists .glistWin]} { incr reste }
+  # (My databases laid over the Lab: what is seen is ready, the Lab's
+  # windows are made under it after the window is shown; 4 to 5 s waited
+  # for them on Windows, Yosha 2026-11-17)
+  set dessus 0
+  catch {set dessus [expr {$::moderne::mesbases::superpose ne {} && [winfo ismapped .fdockmesBasesWin]}]}
+  # (not used: the Lab was then seen being built, Yosha 2026-11-17)
+  set dessus 0
   if {$reste && [clock milliseconds] < $limite} {
     catch {::sibyDemarrage::avancer 90}
     after 50 [list ::moderne::montrerQuandPret $limite]
@@ -954,6 +961,14 @@ proc ::moderne::montrerQuandPret {limite} {
   catch {wm attributes . -alpha 1.0}
   # (the startup window gone: Siby is there)
   catch ::sibyDemarrage::fin
+  catch {::moderne::journal "Siby: window shown [format %.1f [expr {([clock milliseconds] - $::sibyT0) / 1000.0}]] s after the start"}
+  set ::moderne::fenetreMontree 1
+  # (the Lab's windows under My databases, made now)
+  if {[info exists ::docking::differeesApresDemarrage]} {
+    unset ::docking::differeesApresDemarrage
+    after 200 ::docking::lancerDifferees
+  }
+  catch ::sibyChronoFin
 }
 
 ### The main window brought back on the screen if it is not maximized and
@@ -1019,7 +1034,10 @@ proc ::moderne::revelerFenetre {} {
   wm deiconify .
   catch {update idletasks}
   # (Toby loaded ahead when it is used: Options › Preload Toby)
-  after 8000 {catch ::moderne::docks::prechargerToby}
+  # (once the reference database (Gaby) is read: both at once, Toby's
+  # networks and Gaby's 10 million games, made the start slow, Yosha
+  # 2026-11-17)
+  after 8000 {catch ::moderne::docks::prechargerTobyApres}
   # (Windows: still transparent during the last adjustments, until the
   # Lab's slow windows (the game list…) are made and painted: shown at a
   # fixed 0.5 s, the window froze 1.5 s in front of the user while they were
@@ -1045,6 +1063,9 @@ proc ::moderne::revelerFenetre {} {
   after 8000 {catch ::moderne::gaby::demarrage}
   # Siby itself: a newer version offered (majsiby.tcl)
   after 20000 {catch ::moderne::majsiby::demarrage}
+  # Toby too, when Siby downloaded it; the one put in place at this start said
+  after 40000 {catch ::moderne::majtoby::demarrage}
+  after 4000 {catch ::moderne::majtoby::annoncerInstalle}
   # the official FIDE data of the players pack, unzipped in the background
   after 12000 {catch ::moderne::fide::preparer}
   # navigation bar on the left
@@ -1089,7 +1110,8 @@ proc ::moderne::molette {w delta {evt <MouseWheel>}} {
   if {![winfo exists $w]} { return }
   # the widget handles the wheel itself (its own, class or tag bindings)
   foreach tag [bindtags $w] {
-    if {$tag eq "all"} { continue }
+    # (coups.log's tag, clavier.tcl: not a wheel handling)
+    if {$tag in {all SibyMouchard}} { continue }
     if {[bind $tag $evt] ne {}} { return }
   }
   set unites [expr {$delta > 0 ? -max(1, $delta / 120) : max(1, -$delta / 120)}]

@@ -54,6 +54,11 @@ proc ::moderne::resultats::montrer {requete {coups 1}} {
     catch ::moderne::direct::retirerSuperposition
     catch placerOnglet
     catch {[::docking::find_tbn .fdockresultatsWin] select .fdockresultatsWin}
+    # (and again a moment later: a layout that keeps the results tab with
+    # an engine docks it there after a delay, out of sight, Yosha
+    # 2026-11-22: a search's results next to Stockfish, no tab shown)
+    after cancel ::moderne::resultats::devant
+    after 700 ::moderne::resultats::devant
   } else {
     catch {raise $w}
   }
@@ -79,6 +84,11 @@ proc ::moderne::resultats::placerOnglet {} {
   if {$src ne {} && [winfo exists $src]} { catch {$src forget $d} }
   if {[catch {$nb add $d -text [T "Résultats" "Results"]}]} { catch {$nb select $d} }
   catch {raise $d}
+}
+
+proc ::moderne::resultats::devant {} {
+  catch placerOnglet
+  catch {[::docking::find_tbn .fdockresultatsWin] select .fdockresultatsWin}
 }
 
 proc ::moderne::resultats::creer {} {

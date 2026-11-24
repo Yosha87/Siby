@@ -239,8 +239,13 @@ proc ::moderne::commentaire::menuSymboles {genre} {
   variable nags
   variable popChoix
   variable popSymboles {}
+  variable popFocus
   majNags
   set w .symbolesPop
+  # (the focus goes back where it was when the menu closes: on Windows it
+  # fell on ".", Yosha 2026-11-18: a move back then went two moves back)
+  set f [focus]
+  if {$f ne {} && ![string match .symbolesPop* $f]} { set popFocus $f }
   catch {destroy $w}
   toplevel $w -background [::moderne::c trait] -borderwidth 0
   wm withdraw $w
@@ -313,9 +318,14 @@ proc ::moderne::commentaire::popValider {i} {
   if {$nag ne {}} { basculerNag $nag }
 }
 proc ::moderne::commentaire::fermerSymboles {} {
+  variable popFocus
   catch {grab release .symbolesPop}
   catch {destroy .symbolesPop}
-  catch {focus .main.board}
+  set f .main.board
+  if {[info exists popFocus] && [winfo exists $popFocus]} { set f $popFocus }
+  catch {focus -force $f}
+  # (again once the window manager has given the focus back to a window)
+  after 80 [list catch [list focus -force $f]]
 }
 
 ### Screen point next to the current move: below it in the notation, else
@@ -368,6 +378,12 @@ proc ::moderne::commentaire::nettoyer {quoi} {
         if {[regexp {^\{\s*\}$} $com]} { set com {} }
       }
       if {$quoi eq "citations" && [estCitation [string range $com 1 end-1]]} { set com {} }
+      # (the text only: arrows, squares, move times and evaluations
+      # kept, Yosha 2026-11-17)
+      if {$quoi eq "texte"} {
+        set cmds [regexp -all -inline {\[%[^\]]*\]} $com]
+        set com [expr {[llength $cmds] ? "\{[join $cmds { }]\}" : {}}]
+      }
       if {$quoi eq "temps"} {
         regsub -all {\s*\[%(clk|emt)\s[^\]]*\]} $com {} com
         if {[regexp {^\{\s*\}$} $com]} { set com {} }

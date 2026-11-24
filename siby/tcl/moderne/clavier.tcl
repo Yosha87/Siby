@@ -1,7 +1,8 @@
 ###
 ### Siby: keyboard and mouse shortcuts, like Lichess and ChessBase.
 ###
-###  Lichess: f flip the board; ← → or h l: move back / forward;
+###  Lichess: f flip the board; ← → or h l: move back / forward; Shift+←:
+###  out of the variation, before its branching (one level at a time);
 ###  ↑ ↓ or k j: start / end; d: comment; g: symbols (the "!" menu);
 ###  right click on a square: colour it; right drag: arrow. Green; red with
 ###  Shift or Ctrl; blue with Alt; yellow with Shift+Alt (or Ctrl+Alt).
@@ -234,6 +235,16 @@ proc ::moderne::clavier::effacerMarques {} {
   catch {.main.board.bd delete mark}
   catch {::board::mark::clear .main.board}
   after idle {catch {::pgn::Refresh 1}}
+  # (the click that erased them is not the first click of a move: the next
+  # one on a piece is, to drag it or click its arrival square, Yosha
+  # 2026-11-16)
+  after idle {
+    if {$::selectedSq >= 0} {
+      catch {::board::highlightSquare .main.board $::selectedSq}
+      set ::selectedSq -1
+    }
+    catch {::board::setDragSquare .main.board -1}
+  }
 }
 
 proc ::moderne::clavier::relache {x y} {
@@ -527,6 +538,10 @@ proc ::moderne::clavier::fleche {seq} {
   if {".main" in [bindtags $f]} { return }
   if {[saisie $f]} { return }
   foreach t [bindtags $f] {
+    # (a tag that already moves one move: the tab bars, SCID's
+    # standardShortcuts on TNotebook; one key went two moves on a tab bar
+    # that had the focus, coups.log of Yosha 2026-11-23)
+    if {[string match *::move::* [bind $t <$seq>]]} { return }
     if {$t in {all Treeview TCombobox TNotebook Canvas Frame TFrame}} { continue }
     if {[bind $t <$seq>] ne {}} { return }
   }
@@ -570,6 +585,16 @@ foreach {seq cmd} {bracketleft ::game::TruncateBegin bracketright ::game::Trunca
     bind all <$seq> [list ::moderne::clavier::crochet %W $cmd]
   }
 }
+
+### Shift+Left: out of the variation, back just before where it branches
+### (a sub-variation: one level), as on Lichess; → then offers the choice
+### of the branching (Yosha 2026-11-18). On the main line: nothing.
+proc ::moderne::clavier::sortirVariante {W} {
+  if {![::moderne::commentaire::raccourci $W]} { return }
+  if {[sc_var level] > 0} { ::move::ExitVar }
+  return -code break
+}
+bind all <Shift-Left> {::moderne::clavier::sortirVariante %W}
 
 foreach seq {Left Right} {
   bind all <$seq> [list ::moderne::clavier::fleche $seq]
@@ -716,8 +741,8 @@ proc ::moderne::clavier::parcourirEffacer {quoi} {
 }
 
 ################################################################################
-### Two moves forward for one press (Yosha 2026-11-10, not reproduced): when
-### ::move::Forward runs twice within 400 ms, both calls are written to
+### Two moves forward (or back) for one press (Yosha 2026-11-10, not
+### reproduced): when ::move::Forward (or Back) runs twice within 400 ms, both calls are written to
 ### coups.log (Siby's folder; in the problem report): who called, the focus,
 ### the widget under the pointer, the last keys and clicks
 ################################################################################
@@ -744,38 +769,55 @@ proc ::moderne::mouchard::appel {} {
 }
 
 proc ::moderne::mouchard::installer {} {
-  if {[llength [info commands ::move::Forward_mouchard]] || ![llength [info commands ::move::Forward]]} { return }
-  rename ::move::Forward ::move::Forward_mouchard
-  proc ::move::Forward {{count 1}} {
-    catch {
-      set ici [::moderne::mouchard::appel]
-      set avant $::moderne::mouchard::dernier
-      set ::moderne::mouchard::dernier $ici
-      if {$avant ne {} && [lindex $ici 0] - [lindex $avant 0] < 400} {
-        set c [open [file join $::scidUserDir coups.log] a] ; fconfigure $c -encoding utf-8
-        puts $c "[clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}] two moves forward in [expr {[lindex $ici 0] - [lindex $avant 0]}] ms"
-        foreach {nom r} [list first $avant second $ici] {
-          lassign $r t loc pile f sous
-          puts $c "  $nom: ply $loc, focus $f, under the pointer $sous"
-          puts $c "    called by: [join $pile { <- }]"
-        }
-        foreach e $::moderne::mouchard::evenements {
-          lassign $e t quoi W
-          puts $c "  [expr {$t - [lindex $ici 0]}] ms: $quoi on $W"
-        }
-        close $c
-      }
-    }
-    uplevel 1 [list ::move::Forward_mouchard $count]
+  # (forward and back: Yosha saw both, 2026-11-16)
+  foreach {cmd sens} {Forward forward Back back} {
+    if {[llength [info commands ::move::${cmd}_mouchard]] || ![llength [info commands ::move::$cmd]]} { continue }
+    rename ::move::$cmd ::move::${cmd}_mouchard
+    proc ::move::$cmd {{count 1}} [string map [list @CMD@ $cmd @SENS@ $sens] {
+      catch {::moderne::mouchard::verifier @SENS@}
+      uplevel 1 [list ::move::@CMD@_mouchard $count]
+    }]
   }
   # (the keys: a tag put first on the widget that gets the focus, so that
   # every key is seen, before the widget's own bindings and their break)
   bind SibyMouchard <KeyPress> {::moderne::mouchard::noter "key %K" %W}
   bind SibyMouchard <ButtonPress> {::moderne::mouchard::noter "button %b" %W}
-  bind SibyMouchard <MouseWheel> {::moderne::mouchard::noter "wheel %D" %W}
+  # (Shift+Left here, the first tag of the widget with the focus: on the
+  # later tags, a plain <Left> binding (the main window, the board, the
+  # library) took Shift+Left too and went one move back first)
+  bind SibyMouchard <Shift-Left> {::moderne::mouchard::noter "key Shift-Left" %W ; ::moderne::clavier::sortirVariante %W}
+  # (not the wheel on this tag: the wheel's routing (::moderne::molette)
+  # took the tag for the widget's own wheel and nothing scrolled any more,
+  # My databases' tiles, Yosha 2026-11-17; "bind all" below writes it)
   bind all <FocusIn> {+::moderne::mouchard::marquer %W}
   catch {::moderne::mouchard::marquer [focus]}
   bind all <ButtonPress> {+::moderne::mouchard::noter "button %b" %W}
+  # (the wheel wherever the pointer is: the one double move of 16 November
+  # came 214 ms after a key, the pointer over the board, nothing written;
+  # a touchpad's slight scroll is likely, these lines will tell)
+  bind all <MouseWheel> {+::moderne::mouchard::noter "wheel %D" %W}
+  bind all <Shift-MouseWheel> {+::moderne::mouchard::noter "wheel+shift %D" %W}
+}
+
+### Two moves the same way within 400 ms: both calls written to coups.log
+proc ::moderne::mouchard::verifier {sens} {
+  variable dernier
+  set ici [concat [appel] $sens]
+  set avant $dernier
+  set dernier $ici
+  if {$avant eq {} || [lindex $avant 5] ne $sens || [lindex $ici 0] - [lindex $avant 0] >= 400} { return }
+  set c [open [file join $::scidUserDir coups.log] a] ; fconfigure $c -encoding utf-8
+  puts $c "[clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}] two moves $sens in [expr {[lindex $ici 0] - [lindex $avant 0]}] ms"
+  foreach {nom r} [list first $avant second $ici] {
+    lassign $r t loc pile f sous
+    puts $c "  $nom: ply $loc, focus $f, under the pointer $sous"
+    puts $c "    called by: [join $pile { <- }]"
+  }
+  foreach e $::moderne::mouchard::evenements {
+    lassign $e t quoi W
+    puts $c "  [expr {$t - [lindex $ici 0]}] ms: $quoi on $W"
+  }
+  close $c
 }
 proc ::moderne::mouchard::marquer {W} {
   if {$W eq {} || ![winfo exists $W]} { return }

@@ -745,6 +745,17 @@ proc ::moderne::direct::garantirPrets {c} {
   }
 }
 
+### Window d's own group in the Lab, as the Lab's layout has it: the
+### notation and the review with the game list, the tablebase with the
+### opening library; {} if that group is not there
+proc ::moderne::direct::maisonLab {d} {
+  set voisin [dict get {.fdockpgnWin .fdockglistWin .fdockbilanWin .fdockglistWin .fdocktbWin .fdockbiblioWin} $d]
+  if {![winfo exists $voisin]} { return {} }
+  set nb [::docking::find_tbn $voisin]
+  if {$nb eq {} || ![winfo exists $nb] || [string match .directCouvre* $nb] || [string match .jeuCouvre* $nb]} { return {} }
+  return $nb
+}
+
 ### The cover taken off: the Lab under it as it was. The live panel and the
 ### players' library are closed, as a change of layout did (the board's
 ### bands go with them); the list is kept, hidden.
@@ -775,6 +786,13 @@ proc ::moderne::direct::retirerSuperposition {} {
       # against an engine: the group of the game list or My databases, else
       # any of the Lab's; the notation stayed in the hidden cover, missing
       # from the Lab and from the next game view, Yosha 2026-11-11)
+      # (its own group in the Lab when the one noted is gone or is the
+      # cover's: the notation came back above the library, then next to
+      # it, Yosha 2026-11-17)
+      if {![winfo exists $nb] || [string match $c* $nb]} {
+        set m [maisonLab $d]
+        if {$m ne {}} { set nb $m ; set i end }
+      }
       if {![winfo exists $nb]} {
         set nb {}
         foreach voisin {.fdockglistWin .fdockmesBasesWin .fdockpgnWin .fdocktbWin} {
@@ -799,12 +817,16 @@ proc ::moderne::direct::retirerSuperposition {} {
     }
     foreach {src d} [list $c.pw.haut .fdocktbWin $c.pw.bas .fdockpgnWin] {
       if {![winfo exists $src]} { continue }
-      set nb [expr {[winfo exists $d] ? [::docking::find_tbn $d] : {}}]
       foreach t [$src tabs] {
         if {$t in [list .fdock[string range $panneau 1 end] .fdock[string range $jw 1 end]]} { continue }
+        # (the tablebase, the notation, the review: their own group in the
+        # Lab; anything else opened there: with the notation)
+        set m {}
+        if {$t in {.fdockpgnWin .fdocktbWin .fdockbilanWin}} { set m [maisonLab $t] }
+        if {$m eq {}} { set m [maisonLab [expr {$src eq "$c.pw.haut" ? ".fdocktbWin" : ".fdockpgnWin"}]] }
         set titre [$src tab $t -text]
         catch {$src forget $t}
-        ::moderne::docks::rangerOnglet $t $titre [expr {$nb ne {} && [winfo exists $nb] ? $nb : {}}] .directCouvre
+        ::moderne::docks::rangerOnglet $t $titre $m .directCouvre
       }
     }
     set prets {}
@@ -812,7 +834,12 @@ proc ::moderne::direct::retirerSuperposition {} {
     catch {unset ::docking::tbs($c.pw.bas)}
   }
   catch ::docking::setTabStatus
+  # (whatever stayed in the hidden cover, brought back: Yosha 2026-11-17,
+  # no notation in the Lab after a broadcast game)
+  after 300 {foreach d {.fdockpgnWin .fdocktbWin .fdockbilanWin} { catch {::sibyRapatrier $d} }}
   after idle {catch ::moderne::prepa::suivreNotation}
+  # (the review given back next to the notation, never by an engine)
+  catch ::moderne::bilan::verifierPlusTard
   return 1
 }
 
@@ -3353,16 +3380,19 @@ proc ::moderne::direct::ajusterBande {b} {
 ### "≈ 2480" or {}
 proc ::moderne::direct::niveauPartie {c} {
   set tag [expr {$c eq "B" ? "WhiteLevel" : "BlackLevel"}]
+  set src {} ; set niv {}
   foreach {t v} [sc_game tags get Extra] {
-    if {$t eq $tag && [string is integer -strict $v]} { return [::moderne::niveau::affiche $v 1] }
+    if {$t eq $tag && [string is integer -strict $v]} { set niv $v }
+    if {$t eq "${tag}Source" && $v eq "moves"} { set src a }
   }
+  if {$niv ne {}} { return [::moderne::niveau::affiche $niv 1 $src] }
   set f [::moderne::bilan::fichierCache [::moderne::bilan::coupsUci]]
   if {![file exists $f]} { return {} }
   set h [open $f r]
   fconfigure $h -encoding utf-8
   set pgn [lindex [read $h] 1]
   close $h
-  if {[regexp "$tag \"(\\d+)\"" $pgn -> v]} { return [::moderne::niveau::affiche $v 1] }
+  if {[regexp "$tag \"(\\d+)\"" $pgn -> v]} { return [::moderne::niveau::affiche $v 1 [expr {[regexp "${tag}Source \"moves\"" $pgn] ? "a" : {}}]] }
   return {}
 }
 
@@ -4652,10 +4682,11 @@ proc ::moderne::horloges::maj {} {
     }
     $f.j.elo configure -text [expr {[string is integer -strict $elo] && $elo > 0 ? $elo : {}}]
     set coul [expr {$c eq "B" ? "White" : "Black"}]
-    set titre {} ; set niv {}
+    set titre {} ; set niv {} ; set src {}
     foreach {t v} [sc_game tags get Extra] {
       if {$t eq "${coul}Title"} { set titre $v }
       if {$t eq "${coul}Level"} { set niv $v }
+      if {$t eq "${coul}LevelSource" && $v eq "moves"} { set src a }
     }
     if {$titre eq {} && $nom ne {}} { catch {set titre [::moderne::avatars::titreFide $nom]} }
     if {$titre in {WC WWC}} { set titre {} }
@@ -4674,7 +4705,7 @@ proc ::moderne::horloges::maj {} {
           ::moderne::avatars::maj $f.j.avatar $nom $titre 43
         }
       }
-      $f.j.niveau configure -text [expr {[string is integer -strict $niv] ? [::moderne::niveau::affiche $niv 1] : {}}]
+      $f.j.niveau configure -text [expr {[string is integer -strict $niv] ? [::moderne::niveau::affiche $niv 1 $src] : {}}]
     }
     set t [expr {$c eq "B" ? $cb : $cn}]
     # (the box as wide as the digits shown: no empty hours, Yosha 2026-11-09)

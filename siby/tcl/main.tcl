@@ -650,8 +650,8 @@ proc showVars {} {
   bind $w <Return> {enterVar}
   bind $w <KP_Enter> {enterVar}
   bind $w <Right> {enterVar}
-  bind $w <Up> {variationsChoisir [expr {max(0, $::variationsSel - 1)}]}
-  bind $w <Down> {variationsChoisir [expr {min([llength $::variationsChoix] - 1, $::variationsSel + 1)}]}
+  bind $w <Up> {variationsPas -1}
+  bind $w <Down> {variationsPas 1}
   for {set j 1} {$j <= 9 && $j < [llength $coups]} {incr j} {
     bind $w <KeyPress-$j> [list enterVar [lindex $::variationsChoix $j]]
   }
@@ -728,6 +728,12 @@ proc variationsSurvol {k X Y} {
 }
 
 ### Row k of the variations' choice highlighted
+### Up / Down in the variations box, round from one end to the other
+### (Yosha 2026-11-18)
+proc variationsPas {d} {
+  set n [llength $::variationsChoix]
+  if {$n} { variationsChoisir [expr {($::variationsSel + $d + $n) % $n}] }
+}
 proc variationsChoisir {k} {
   set f .variations.f
   if {![winfo exists $f]} { return }
@@ -1665,15 +1671,29 @@ proc pressSquare {square confirm} {
     return
   }
 
+  # (Siby: a piece that can move: the side to move's, or the player's for
+  # a premove)
+  set c [string index [sc_pos side] 0]  ;# will be "w" or "b"
+  set p [string index [::board::piece .main.board $square] 0] ;# "w", "b" or "e"
+  set mien [expr {$c == $p || (![catch {::moderne::premove::piece $p} r] && $r)}]
   if {$selectedSq == -1} {
+    # (Siby: a move by clicks starts on its piece; a click on the arrival
+    # square first plays nothing, as on Lichess, Yosha 2026-11-16)
+    if {!$mien && [::moderne::actif]} { return }
     set selectedSq $square
     ::board::highlightSquare .main.board $square $highcolor
     # Drag this piece if it is the same color as the side to move:
-    set c [string index [sc_pos side] 0]  ;# will be "w" or "b"
-    set p [string index [::board::piece .main.board $square] 0] ;# "w", "b" or "e"
-    if {$c == $p || (![catch {::moderne::premove::piece $p} r] && $r)} {
+    if {$mien} {
       ::board::setDragSquare .main.board $square
     }
+  } elseif {$mien && $square != $selectedSq && [::moderne::actif] &&
+            [catch {sc_pos isLegal $square $selectedSq} legal] == 0 && !$legal} {
+    # (Siby: another of one's pieces, no move to it (king then rook still
+    # castles): chosen instead)
+    ::board::highlightSquare .main.board $selectedSq
+    set selectedSq $square
+    ::board::highlightSquare .main.board $square $highcolor
+    ::board::setDragSquare .main.board $square
   } else {
     ::board::setDragSquare .main.board -1
     ::board::highlightSquare .main.board $selectedSq

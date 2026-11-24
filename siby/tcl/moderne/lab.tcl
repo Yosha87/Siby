@@ -145,6 +145,14 @@ proc ::moderne::lab::pages {lab} {
   variable pages
   return [expr {[info exists pages($lab)] ? $pages($lab) : {}}]
 }
+### Are all of the Lab's pages still there? (the last tab of a page closed:
+### the docking destroys the empty page, the Lab stays, singe 2026-11-22)
+proc ::moderne::lab::entier {lab} {
+  variable pages
+  if {![winfo exists $lab] || ![info exists pages($lab)]} { return 0 }
+  foreach p $pages($lab) { if {![winfo exists $p]} { return 0 } }
+  return 1
+}
 proc ::moderne::lab::titres {lab} {
   variable titres
   return [expr {[info exists titres($lab)] ? $titres($lab) : {}}]
@@ -167,6 +175,9 @@ proc ::moderne::lab::montrer {lab i} {
   after idle [list ::moderne::lab::trait $lab]
   set k 0
   foreach p $pages($lab) {
+    # (a page destroyed with its last tab is left out: the layout then
+    # builds the Lab again, ::moderne::disposition::lab)
+    if {![winfo exists $p]} { incr k ; continue }
     if {$k == $i} { grid $p } else { grid remove $p }
     incr k
   }
@@ -182,6 +193,8 @@ proc ::moderne::lab::montrer {lab i} {
     set dejaVue($p) 1
     after idle [list ::moderne::lab::remettreBarres $p]
   }
+  # (the review next to the notation, whatever moved it meanwhile)
+  catch ::moderne::bilan::verifierPlusTard
 }
 
 ### The accent line under the tab of the shown page

@@ -105,7 +105,7 @@ proc ::docking::embed_tbn {tbn anchor} {
     set orient "vertical"
   }
   # create new paned window
-  set npw [ttk::panedwindow $pw.pw$tbcnt -orient $orient  ]
+  set npw [ttk::panedwindow [nomLibre $pw pw] -orient $orient  ]
   incr tbcnt
   # move old notebook
   set i [lsearch -exact [$pw panes] $tbn]
@@ -116,7 +116,7 @@ proc ::docking::embed_tbn {tbn anchor} {
     $pw insert $i $npw -weight 1
   }
   # add new notebook
-  set ntb [ttk::notebook [winfo toplevel $pw].tb$tbcnt]
+  set ntb [ttk::notebook [nomLibre [winfo toplevel $pw] tb]]
   incr tbcnt
   set tbs($tbn) $npw
   set tbs($ntb) $npw
@@ -133,6 +133,18 @@ proc ::docking::embed_tbn {tbn anchor} {
 
 ################################################################################
 # add a new notebook to the side anchor of the notebook tbn
+### Siby: the next free .tbN / .pwN name (a layout restored by name may
+### already use the counter's: "window name tb7 already exists in parent",
+### the game panel could not be put right of the board, Yosha 2026-11-21)
+proc ::docking::nomLibre {parent prefixe} {
+  variable tbcnt
+  # ("." + ".tb7" makes "..tb7": Tk creates .tb7, but "winfo exists ..tb7"
+  # says 0)
+  if {$parent eq "."} { set parent {} }
+  while {[winfo exists $parent.$prefixe$tbcnt]} { incr tbcnt }
+  return $parent.$prefixe$tbcnt
+}
+
 proc ::docking::add_tbn {tbn anchor} {
   variable tbcnt
   variable tbs
@@ -144,7 +156,7 @@ proc ::docking::add_tbn {tbn anchor} {
   if {$orient=="horizontal" && ($anchor=="w" || $anchor=="e")} {
     set i [lsearch -exact [$pw panes] $tbn]
     if {$anchor=="e"} { incr i }
-    set tbn [ttk::notebook [winfo toplevel $pw].tb$tbcnt]
+    set tbn [ttk::notebook [nomLibre [winfo toplevel $pw] tb]]
     incr tbcnt
     set tbs($tbn) $pw
     if {$i>=[llength [$pw panes]]} {
@@ -155,7 +167,7 @@ proc ::docking::add_tbn {tbn anchor} {
   } elseif {$orient=="vertical" && ($anchor=="n" || $anchor=="s")} {
     set i [lsearch -exact [$pw panes] $tbn]
     if {$anchor=="s"} { incr i}
-    set tbn [ttk::notebook [winfo toplevel $pw].tb$tbcnt]
+    set tbn [ttk::notebook [nomLibre [winfo toplevel $pw] tb]]
     incr tbcnt
     set tbs($tbn) $pw
     if {$i>=[llength [$pw panes]]} {
@@ -625,6 +637,16 @@ proc ::docking::placeDiffere {nb d nom script} {
 set ::docking::differees {}
 set ::docking::placeImposee 0   ;# windows being made in a place a layout keeps (nested calls)
 proc ::docking::lancerDifferees {} {
+  # (Siby's start with My databases laid over the Lab: the Lab's windows
+  # made under it once the window is shown, not before; 3 to 4 s on
+  # Windows, Yosha 2026-11-17; see ::moderne::montrerQuandPret)
+  # (not used: the Lab made under the shown window was seen being built,
+  # Yosha 2026-11-17; the window waits for it again)
+  if {0 && [info exists ::moderne_demarrage] && $::moderne_demarrage == 0 && ![info exists ::moderne::fenetreMontree]
+      && [info exists ::moderne::mesbases::superpose] && $::moderne::mesbases::superpose ne {}} {
+    set ::docking::differeesApresDemarrage 1
+    return
+  }
   set l $::docking::differees
   set ::docking::differees {}
   foreach x $l { after 1 [list ::docking::fenetreDifferee {*}$x] }
@@ -721,6 +743,11 @@ proc ::docking::add_tab {path args} {
     foreach tb [array names tbs] {
       # (Siby: not in the hidden page of the Lab block)
       if {![catch {::moderne::lab::cache $tb} c] && $c} { continue }
+      # (Siby: a window that is not an engine never goes into an engine's
+      # group: one rule for the tabs, moderne/rangement.tcl, Yosha
+      # 2026-11-22; unless the engines' groups are all there is)
+      if {![string match .fdockanalysisWin* $path] && ![string match .fdockattente* $path] &&
+          ![catch {::moderne::rangement::groupeMoteur $tb} gm] && $gm && [::moderne::rangement::autreGroupe $tb]} { continue }
       # It's possible to have no ".nb" so use this instead of ($tb != ".nb")
       set tabs [$tb tabs]
       set tabcount [llength $tabs]
@@ -804,6 +831,10 @@ proc ::docking::add_tab {path args} {
   # (Siby: a window opened later in the Lab block: its page shown)
   if {!([info exists ::docking::enConstruction] && $::docking::enConstruction)} {
     catch {::moderne::lab::montrerPour $path}
+    # (the page shown gives the preparation's notation back, chosen in this
+    # group: the window just opened in front again; the game list opened
+    # from the Preparation stayed behind the notation, test onglets_partout)
+    catch {$dsttab select $path}
   }
   # Make new tab active
   set ::docking::activeTab($dsttab) $path

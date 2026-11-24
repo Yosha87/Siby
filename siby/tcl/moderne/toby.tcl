@@ -81,17 +81,113 @@ proc ::moderne::toby::estToby {n} {
   return $oui
 }
 
-### Precision (Toby option, Accurate | Fast): Accurate = Leela in
-### Classical with an NVIDIA card, Stockfish otherwise; Fast = Stockfish
-### always
-proc ::moderne::toby::envoyerPrecision {n {envoi ::sendToEngine}} {
+### Precision (Toby option, Accurate | Fast): Accurate = Leela calculates,
+### in Classical with an NVIDIA card, otherwise the same as Fast; Fast =
+### Stockfish calculates, guided by Leela's raw policy (one Leela evaluation
+### per move, GPU or CPU), Stockfish alone only when Leela is missing or fails
+proc ::moderne::toby::envoyerPrecision {n {envoi ::sendToEngine} {analyse 1}} {
   set p Accurate
   if {[info exists ::moderne::toby::precision]} {
     if {$::moderne::toby::precision eq "Fast"} { set p Fast }
     # (Hybrid: only a Toby that offers it, Toby 1.0 with the GPU package)
     if {$::moderne::toby::precision eq "Hybrid" && $::moderne::toby::hybride} { set p Hybrid }
   }
+  # Toby 2 has no Precision (Toby 1.0's option, ignored): its product,
+  # Accurate where Toby 2 lists it (full package, NVIDIA card, lc0), else
+  # Standard; only in the analysis panel (one Leela on the card), Standard
+  # in games (Siby beta 8 sent only Precision: Toby 2 stayed on Standard
+  # with an NVIDIA card, Yosha 2026-11-23)
+  if {[aOption $n "Toby 2 Product"]} {
+    set t2 Standard
+    if {$analyse && $p eq "Accurate" && [info exists ::moderne::toby::t2Accurate($n)] && $::moderne::toby::t2Accurate($n)} { set t2 Accurate }
+    catch {$envoi $n "setoption name Toby 2 Product value $t2"}
+    variable produit
+    variable produitRaison
+    if {!$analyse} { return }
+    # (Toby's refusal, said once per process, stays until it restarts)
+    if {![info exists produitRaison($n)] || $produitRaison($n) eq {} || $t2 eq "Standard"} {
+      set produit($n) $t2
+      set produitRaison($n) {}
+    }
+    return
+  }
   catch {$envoi $n "setoption name Precision value $p"}
+}
+### Toby 2's product for the analysis panel: Accurate where Toby 2 lists
+### it and Siby's Precision is Accurate, else Standard ({} for another engine)
+proc ::moderne::toby::produitVoulu {n} {
+  if {![aOption $n "Toby 2 Product"]} { return {} }
+  set p Accurate
+  if {[info exists ::moderne::toby::precision] && $::moderne::toby::precision eq "Fast"} { set p Fast }
+  if {$p eq "Accurate" && [info exists ::moderne::toby::t2Accurate($n)] && $::moderne::toby::t2Accurate($n)} { return Accurate }
+  return Standard
+}
+
+### Before a go: when Toby 2's product changes (engine start, setting
+### changed, review giving the engine back), "setoption … Toby 2 Product",
+### then "isready" (Toby 2 prepares Accurate there, the Toby session
+### 2026-11-23); 1 when the go must wait for readyok
+proc ::moderne::toby::preparerProduit {n} {
+  variable produitPrepare
+  set p [produitVoulu $n]
+  if {$p eq {}} { return 0 }
+  if {[info exists produitPrepare($n)] && $produitPrepare($n) eq $p} { return 0 }
+  set produitPrepare($n) $p
+  ::sendToEngine $n "setoption name Toby 2 Product value $p"
+  set ::analysis(waitForReadyOk$n) 1
+  ::sendToEngine $n isready
+  return 1
+}
+
+### A review frees the graphics card: an analysis panel's Toby 2 in
+### Accurate (its Leela on the card) is closed for the review, so that the
+### level's Toby processes get the card's memory (1 process instead of 3,
+### and 17.5 s to reload it on Standard when it was borrowed, Yosha's
+### siby.log 2026-11-23); it comes back afterwards, analysing again if it
+### was (the Toby session's choice). Called after the panels are paused.
+proc ::moderne::toby::libererCarte {} {
+  variable horsCarte
+  array unset horsCarte
+  set fermes 0
+  foreach f [winfo children .] {
+    if {![regexp {^\.analysisWin([0-9]+)$} $f -> n]} { continue }
+    if {![info exists ::moderne::toby::produitPrepare($n)] || $::moderne::toby::produitPrepare($n) ne "Accurate"} { continue }
+    set analysait [info exists ::moderne::occupation::enPause($n)]
+    unset -nocomplain ::moderne::occupation::enPause($n)
+    set horsCarte($n) $analysait
+    catch {::moderne::journal "Siby: Toby 2 Accurate (engine $n) closed for the review, back afterwards"}
+    catch {::moderne::occupation::fermerAnalyse $n}
+    incr fermes
+  }
+  if {$fermes} {
+    catch {::moderne::nsb::annonce [T "Toby (Précis) quitte l'analyse pendant le bilan (il reviendra après)" \
+        "Toby (Accurate) leaves the analysis during the review (it will come back afterwards)"] -1}
+    after 3500 {catch ::moderne::nsb::finAnnonce}
+    # (its process and Leela ended, about 0.3 s on Windows, before the
+    # card's free memory is read for the level's share)
+    update
+    after 1500
+  }
+  return $fermes
+}
+
+### End of the review: the Toby closed by libererCarte comes back
+proc ::moderne::toby::rendreCarte {} {
+  variable horsCarte
+  foreach n [array names horsCarte] {
+    set analysait $horsCarte($n)
+    unset horsCarte($n)
+    if {![winfo exists .analysisWin$n]} { catch {makeAnalysisWin $n} }
+    if {$analysait} { after 1500 [list ::moderne::sante::reprendre $n 0] }
+  }
+}
+
+### What engine n's option line offers: Precision Hybrid (Toby 1.0, GPU
+### package), Toby 2 Product Accurate (listed only where it can run: an
+### NVIDIA card and the full package)
+proc ::moderne::toby::noterOption {n nom ligne} {
+  if {$nom eq "Precision" && [regexp {\mvar Hybrid\M} $ligne]} { set ::moderne::toby::hybride 1 }
+  if {$nom eq "Toby 2 Product"} { set ::moderne::toby::t2Accurate($n) [regexp {\mvar Accurate\M} $ligne] }
 }
 
 ### Does engine n offer the UCI option nom?
@@ -112,7 +208,12 @@ proc ::moderne::toby::oublier {n} {
   variable ignorer
   variable reponse
   variable analyse
-  foreach v {est bloc tableau attente ignorer reponse analyse} { catch {unset ${v}($n)} }
+  variable produit
+  variable produitRaison
+  variable t2Accurate
+  variable produitPrepare
+  variable attentePrep
+  foreach v {est bloc tableau attente ignorer reponse analyse produit produitRaison t2Accurate produitPrepare attentePrep} { catch {unset ${v}($n)} }
   catch {.main.board.bd delete toby}
 }
 
@@ -511,6 +612,14 @@ proc ::moderne::toby::titre {} {
   set source [dict get $r source]
   set t "Toby • $elos, $source"
   if {$source eq "FIDE"} { append t ", $cad" }
+  # Toby 2's product actually running (Accurate refused: Toby's reason)
+  variable produit
+  variable produitRaison
+  foreach k [lsort [array names produit]] {
+    append t ", Toby 2 $produit($k)"
+    if {[info exists produitRaison($k)] && $produitRaison($k) ne {}} { append t " ($produitRaison($k))" }
+    break
+  }
   # where Maia runs (Toby says it at uci), as Yosha asked (2026-11-02)
   variable maiaDevice
   if {[info exists maiaDevice] && $maiaDevice ne {}} {
@@ -677,6 +786,15 @@ proc ::moderne::toby::ligne {n texte} {
     noter $n "! $texte"
     catch {.analysisWin$n.toby.h.etat configure -text "Toby : $quoi"}
     catch {pack .analysisWin$n.toby.h.etat -in .analysisWin$n.toby.h.e -side left -padx 6 -after .analysisWin$n.toby.h.titre}
+    return 1
+  }
+  # Toby 2 refused Accurate (no lc0, card or driver): Standard answers
+  if {[regexp {^Toby 2 Accurate is not available here \((.*)\)} $texte -> pourquoi]} {
+    variable produit
+    variable produitRaison
+    set produit($n) Standard
+    set produitRaison($n) $pourquoi
+    noter $n "! $texte"
     return 1
   }
   if {![string match -nocase "toby *" $texte]} { return 0 }
@@ -942,7 +1060,7 @@ proc ::moderne::toby::creer {n} {
   bind $f.cv <Configure> [list ::moderne::toby::afficher $n]
   bind $f.cv <ButtonRelease-1> [list ::moderne::toby::clic $n %y]
   bind $f.cv <Motion> [list ::moderne::toby::survol $n %y]
-  bind $f.cv <MouseWheel> [list $f.cv yview scroll [expr {-1}] units]
+  bind $f.cv <MouseWheel> "$f.cv yview scroll \[expr {%D > 0 ? -1 : 1}\] units"
   bind $f.cv <Button-4> [list $f.cv yview scroll -1 units]
   bind $f.cv <Button-5> [list $f.cv yview scroll 1 units]
   $f.cv configure -yscrollincrement 20
@@ -973,14 +1091,30 @@ proc ::moderne::toby::hauteurs {} {
   return [list [expr {$ls + 8}] $pas]
 }
 
+### Rows Toby's table is sized for, with v moves shown: those moves and
+### « Other moves », at most 4 (more scroll); none at 0 (the score only)
+proc ::moderne::toby::rangsTableau {v} {
+  if {![string is integer -strict $v]} { set v 8 }
+  if {$v <= 0} { return 0 }
+  return [expr {min($v + 1, 4)}]
+}
+
 proc ::moderne::toby::ajusterHauteur {n} {
   set w .analysisWin$n
   if {![winfo exists $w.toby]} { return }
   lassign [hauteurs] hh hl
-  $w.toby.cv configure -height [expr {$hh + 4 * $hl + 6}]
+  set r [rangsTableau [::moderne::moteur::vues $n]]
+  # (no move shown: the table goes, the score stays)
+  if {$r == 0} {
+    catch {pack forget $w.toby.cv $w.toby.sb}
+  } elseif {[winfo manager $w.toby.cv] eq {}} {
+    pack $w.toby.sb -side right -fill y
+    pack $w.toby.cv -side left -fill both -expand 1
+  }
+  $w.toby.cv configure -height [expr {$r == 0 ? 1 : $hh + $r * $hl + 6}]
   update idletasks
   set h [expr {[winfo reqheight $w.b] + [winfo reqheight $w.toby]}]
-  catch {dict set ::moderne::moteur::hauteurMem "[::moderne::moteur::nom $n]|toby" $h}
+  catch {dict set ::moderne::moteur::hauteurMem "[::moderne::moteur::nom $n]|toby|$r" $h}
   catch {::moderne::docks::ajusterHauteur .fdockanalysisWin$n $h}
 }
 
@@ -1106,6 +1240,22 @@ proc ::moderne::toby::afficher {n} {
   set y $hh
   set i 0
   set lignes [dict get $tableau($n) lignes]
+  # (the moves shown: the first ones; those hidden go into « Other moves »,
+  # with what Toby put there, so that it still says all the rest, Yosha
+  # 2026-11-16)
+  set vues [::moderne::moteur::vues $n]
+  set autresP {} ; set autresK 0
+  if {[dict exists $tableau($n) autres]} { lassign [dict get $tableau($n) autres] autresP autresK }
+  if {[llength $lignes] > $vues} {
+    foreach l [lrange $lignes $vues end] {
+      set p [dict get $l prob]
+      if {![string is double -strict $p]} { continue }
+      set autresP [expr {[string is double -strict $autresP] ? $autresP + $p : $p}]
+      if {![string is integer -strict $autresK]} { set autresK 0 }
+      incr autresK
+    }
+    set lignes [lrange $lignes 0 [expr {$vues - 1}]]
+  }
   foreach l $lignes {
     set y1 [expr {$y + $i * $hl}]
     set y2 [expr {$y1 + $hl}]
@@ -1161,8 +1311,8 @@ proc ::moderne::toby::afficher {n} {
     incr i
   }
   # the moves Toby did not list, together: their probability only, greyed
-  if {[dict exists $tableau($n) autres]} {
-    lassign [dict get $tableau($n) autres] p k
+  if {1} {
+    set p $autresP ; set k $autresK
     if {[string is double -strict $p] && [string is integer -strict $k] && $k > 0} {
       set y1 [expr {$y + $i * $hl}]
       set ym [expr {$y1 + $hl / 2}]
@@ -1267,7 +1417,7 @@ proc ::moderne::toby::reglagesFenetre {n} {
   frame $f.corps -background $fond
   pack $f.corps -side top -fill x
 
-  # Precision: only with an NVIDIA card (without one, both are Stockfish)
+  # Precision: only with an NVIDIA card (without one, both are the same)
   set nv 0
   catch {set nv [::moderne::ajout::nvidia]}
   if {$nv} {
@@ -1276,8 +1426,10 @@ proc ::moderne::toby::reglagesFenetre {n} {
     if {$::moderne::toby::hybride} { lappend choix [list Hybrid [T "Hybride" "Hybrid"]] }
     ::moderne::jouer::segments $f.pr ::moderne::toby::form(precision) $choix
     pack $f.pr -side top -fill x
-    set bulle [T "Précis : les valeurs de Leela en classique quand Leela et une carte NVIDIA sont là, sinon identique à Rapide. Rapide : Stockfish seul." \
-        "Accurate: Leela's values in Classical when Leela and an NVIDIA GPU are available, otherwise the same as Fast. Fast: Stockfish only."]
+    # (Toby 1.0: Fast is Stockfish guided by Leela's policy, Stockfish alone
+    # only when Leela is missing or fails; the Toby session, 2026-11-15)
+    set bulle [T "Précis : Leela calcule, en classique avec une carte NVIDIA. Rapide : Stockfish calcule, guidé par Leela (une évaluation par coup). Identiques en rapide et en blitz." \
+        "Accurate: Leela calculates, in Classical with an NVIDIA card. Fast: Stockfish calculates, guided by Leela (one evaluation per move). The same in Rapid and Blitz."]
     # (Toby's own words, 2026-11-03)
     if {$::moderne::toby::hybride} {
       append bulle "\n" [T "Hybride : les valeurs de Stockfish et la première impression de Leela sur chaque coup ; proche de Précis, presque aussi rapide que Rapide avec une carte NVIDIA. En classique seulement, sinon identique à Rapide." \
@@ -1703,7 +1855,7 @@ proc ::moderne::toby::optionsPartie {n} {
                          {Stockfish Threads} [filsStockfish $n]] {
     ::sergame::sendToEngine $n "setoption name $nom value $val"
   }
-  envoyerPrecision $n ::sergame::sendToEngine
+  envoyerPrecision $n ::sergame::sendToEngine 0
   set jeu(enCours) 0
 }
 
@@ -1806,7 +1958,7 @@ proc ::moderne::toby::ombre::lancer {num} {
   set e [lindex $::engines(list) $num]
   set ancien [pwd]
   catch {cd [lindex $e 3]}
-  set ok [catch {set pipe [open "| [list [lindex $e 1]] [lindex $e 2]" r+]}]
+  set ok [catch {set pipe [open "| [list [lindex $e 1]] [lindex $e 2][::sibyErreursMoteur]" r+]}]
   catch {cd $ancien}
   if {$ok} { set pipe {} ; return 0 }
   ::moderne::prioriteBasse $pipe

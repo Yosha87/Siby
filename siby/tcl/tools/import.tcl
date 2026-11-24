@@ -266,7 +266,11 @@ proc importPgnFile {} {
   refreshWindows all
 }
 
-proc doPgnFileImport {fname text {multiple 0} } {
+### Siby: ouvrir 1 when a PGN file is opened as a database (not imported
+### into one): its warnings (a last game cut short…) go to siby.log and the
+### box closes, as for a file without warnings (Yosha 2026-11-17: "what is
+### this message?")
+proc doPgnFileImport {fname text {multiple 0} {ouvrir 0} } {
   set w .ipgnWin
   if {[winfo exists $w] && ! $multiple } { destroy $w }
   if {! [winfo exists $w]} {
@@ -345,6 +349,10 @@ proc doPgnFileImport {fname text {multiple 0} } {
   catch {grab release $w.buttons.stop}
   bind $w <Escape> "$w.buttons.close invoke; break"
   # Auto-close import progress window if there were no errors/warnings?
+  if {!$err && $warnings ne "" && $ouvrir} {
+    catch {::moderne::journal "Siby: PGN [file tail $fname]: [string range $warnings 0 1000]"}
+    set warnings ""
+  }
   if {!$err  &&  $warnings == "" && ! $multiple} { destroy $w }
   updateTitle
   updateMenuStates

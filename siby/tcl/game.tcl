@@ -23,6 +23,10 @@ proc ::game::demanderait {} {
 ### saved stays in its tab, the new one opens in a new tab, no question
 ### (Yosha 2026-11-09, as for broadcasts). Same answers as ConfirmDiscard.
 proc ::game::ConfirmDiscardOnglet {} {
+  # (Ctrl+Down / Ctrl+Up through a list: asked at once, Save or not, rather
+  # than one more tab per changed game and all the questions when quitting,
+  # Yosha 2026-11-16)
+  if {[info exists ::game::parcours] && $::game::parcours} { return [::game::ConfirmDiscard] }
   if {[::game::demanderait] && [llength [info commands ::moderne::onglets::nouveau]]} {
     if {[catch {::moderne::onglets::nouveau} ok] || !$ok} { return 2 }
     return 1
@@ -115,8 +119,18 @@ proc ::game::ConfirmDiscard {} {
   }
 
   bind $w <Destroy> {set ::game::answer 2}
-  bind $w <Right> "event generate $w <Tab>"
-  bind $w <Left> "event generate $w <Shift-Tab>"
+  # Siby: the keyboard: Left / Right go through the buttons, Enter (or
+  # space) presses the highlighted one, Escape cancels; then the focus goes
+  # back where it was (Yosha 2026-11-18)
+  set focusAvant [focus]
+  foreach b {b1 b2 b3} {
+    $w.bottom.$b configure -highlightthickness 2 -highlightcolor [expr {[llength [info commands ::moderne::c]] ? [::moderne::c accent] : "#3b82f6"}]
+  }
+  bind $w <Right> {::game::confirmPas 1 ; break}
+  bind $w <Left> {::game::confirmPas -1 ; break}
+  bind $w <Return> {::game::confirmValider ; break}
+  bind $w <KP_Enter> {::game::confirmValider ; break}
+  bind $w <Escape> {.confirmDiscard.bottom.b3 invoke ; break}
 
   update
   placeWinOverParent $w .
@@ -124,13 +138,31 @@ proc ::game::ConfirmDiscard {} {
 
   catch { grab $w }
 
-  focus $w.bottom.b2
+  focus -force $w.bottom.b2
+  after 80 {catch {focus -force .confirmDiscard.bottom.b2}}
   vwait ::game::answer
+  if {$focusAvant ne {} && [winfo exists $focusAvant]} {
+    catch {focus -force $focusAvant}
+    after 80 [list catch [list focus -force $focusAvant]]
+  }
   if {$::game::plusDemander && $::game::answer == 1 && $::game::baseActuelle ne {}} {
     if {![info exists ::moderne::basesExploration]} { set ::moderne::basesExploration {} }
     lappend ::moderne::basesExploration $::game::baseActuelle
   }
   return $::game::answer
+}
+
+### Siby: the save question's buttons with the keyboard
+proc ::game::confirmPas {d} {
+  set bs {.confirmDiscard.bottom.b1 .confirmDiscard.bottom.b2 .confirmDiscard.bottom.b3}
+  set i [lsearch -exact $bs [focus]]
+  if {$i < 0} { set i 1 }
+  catch {focus -force [lindex $bs [expr {($i + $d + 3) % 3}]]}
+}
+proc ::game::confirmValider {} {
+  set f [focus]
+  if {![string match .confirmDiscard.bottom.b* $f]} { set f .confirmDiscard.bottom.b2 }
+  catch {$f invoke}
 }
 
 ### New Game
@@ -231,7 +263,13 @@ proc ::game::LoadNextPrev {action {raise 1}} {
     set statusBar "  Game $number already loaded."
     return
   }
-  ::game::Load $number 1 $raise
+  set ::game::parcours 1
+  set code [catch {::game::Load $number 1 $raise} r]
+  set ::game::parcours 0
+  if {$code} { return -code $code $r }
+  # (Siby: the game list follows, from wherever Ctrl+Down was pressed;
+  # from the board the list stayed where it was, Yosha 2026-11-16)
+  catch ::windows::gamelist::showCurrent
 }
 
 #   Reloads the current game.

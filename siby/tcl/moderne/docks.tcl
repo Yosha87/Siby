@@ -579,7 +579,7 @@ proc ::moderne::docks::prelancer {description} {
     set dir [toAbsPath [lindex $data 3]]
     set avant [pwd]
     if {$dir ne "."} { catch {cd $dir} }
-    if {![catch {open "| [list $cmd] $args" "r+"} c]} {
+    if {![catch {open "| [list $cmd] $args[::sibyErreursMoteur]" "r+"} c]} {
       fconfigure $c -buffering line -blocking 0
       catch {puts $c uci}
       catch {::moderne::toby::prechargerLeela $n [list puts $c]}
@@ -614,6 +614,19 @@ proc ::moderne::docks::finPrelance {} {
 ### user looks at their databases, and its panel finds it ready (Options ›
 ### Preload Toby, Yosha 2026-11-05). The process waits for the panel
 ### (prisPrelance), like the engines of a layout change.
+### (after the reference database's reading in the background, at most
+### 60 s after the start; the time it waited written to siby.log)
+proc ::moderne::docks::prechargerTobyApres {{n 0}} {
+  set lecture 0
+  catch {set lecture [expr {[lindex [sc_base prepa] 0] eq "encours"}]}
+  if {$lecture && $n < 52} {
+    after 1000 [list ::moderne::docks::prechargerTobyApres [incr n]]
+    return
+  }
+  catch {::moderne::journal "Toby preload at [format %.1f [expr {([clock milliseconds] - $::sibyT0) / 1000.0}]] s after the start (waited $n s for the reference database)"}
+  prechargerToby
+}
+
 proc ::moderne::docks::prechargerToby {} {
   if {![info exists ::moderne::toby::precharger] || !$::moderne::toby::precharger} { return }
   if {[info exists ::env(SIBY_DEMARRAGE_BRUT)] && $::env(SIBY_DEMARRAGE_BRUT) ne {} && ![info exists ::env(SIBY_PRECHARGE_TOBY)]} { return }
@@ -629,7 +642,7 @@ proc ::moderne::docks::prechargerToby {} {
   set avant [pwd]
   set dir [toAbsPath [lindex $data 3]]
   if {$dir ne "."} { catch {cd $dir} }
-  if {![catch {open "| [list [toAbsPath [lindex $data 1]]] [lindex $data 2]" "r+"} c]} {
+  if {![catch {open "| [list [toAbsPath [lindex $data 1]]] [lindex $data 2][::sibyErreursMoteur]" "r+"} c]} {
     fconfigure $c -buffering line -blocking 0
     catch {puts $c uci}
     catch {::moderne::toby::prechargerLeela $n [list puts $c]}
@@ -722,6 +735,16 @@ proc ::moderne::docks::installerRestauration {} {
     # (My databases laid over the Lab: back to its tab before the windows
     # are taken out of their tabs)
     catch ::moderne::mesbases::retirerSuperposition
+    # (My databases' window hidden after it was laid over the Lab (in no
+    # tab): destroyed, the layout makes it again if it has it. Put back in
+    # a tab, its content was no longer drawn on Windows: an empty "My
+    # databases" tab, Yosha 2026-11-17, after a broadcast)
+    catch {
+      if {[winfo exists .fdockmesBasesWin] && [::docking::find_tbn .fdockmesBasesWin] eq {}} {
+        catch {destroy .mesBasesWin}
+        catch {destroy .fdockmesBasesWin}
+      }
+    }
     catch ::moderne::direct::retirerSuperposition
     catch ::moderne::disposition::jeuRetirer
     catch ::moderne::prepa::rendreNotation
@@ -1038,6 +1061,8 @@ proc ::moderne::docks::retenirSash {pw k} {
 
 ### End of a layout change: the panel heights asked for meanwhile
 proc ::moderne::docks::finRestauration {} {
+  # (the review next to the notation once the layout is built)
+  catch ::moderne::bilan::verifierPlusTard
   variable restauration 0
   variable hauteursAttente
   if {![info exists hauteursAttente]} { return }

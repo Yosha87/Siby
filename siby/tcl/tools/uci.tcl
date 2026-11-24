@@ -494,8 +494,8 @@ namespace eval uci {
         if {$t == "max"} {incr i ; set max [ lindex $data $i ] ; continue }
       }
       lappend analysis(uciOptions$n) [ list $name $min $max ]
-      # (Siby: Toby 1.0's GPU package offers Precision Hybrid)
-      if {$name eq "Precision" && [regexp {\mvar Hybrid\M} $line]} { set ::moderne::toby::hybride 1 }
+      # (Siby: what Toby offers: Precision Hybrid, Toby 2 Accurate)
+      catch {::moderne::toby::noterOption $n $name $line}
 
       return
     }
@@ -573,7 +573,7 @@ namespace eval uci {
       catch {cd $dir}
     }
     # Try to execute the analysis program:
-    if {[catch {set pipe [open "| [list $cmd] $arg" "r+"]} result]} {
+    if {[catch {set pipe [open "| [list $cmd] $arg[::sibyErreursMoteur]" "r+"]} result]} {
       if {$oldpwd != ""} { catch {cd $oldpwd} }
       if {[winfo exists .engineEdit]} {
         set parent .engineEdit
@@ -938,6 +938,7 @@ namespace eval uci {
     }
 
     foreach l $optList {
+      array unset elt
       array set elt $l
       set value ""
       if { $elt(type) == "check"} {
@@ -947,7 +948,13 @@ namespace eval uci {
         set value [$w.fopt.opt$optnbr get]
       }
       # Buttons are now handled properly in uciConfigWin
-      if { $elt(type) != "button" } {
+      # (Siby: only the options changed from the engine's default are kept,
+      # and so sent back at each start: Toby 2 advertises "Candidates" as
+      # "Maia C" while its own file sets Network, and that value sent back
+      # switched it to Maia's candidates, Toby session 2026-11-19)
+      set defaut [expr {[info exists elt(default)] ? [string trim $elt(default)] : {}}]
+      set pareil [expr {$elt(type) eq "check" ? [string equal -nocase $value $defaut] : [string equal [string trim $value] $defaut]}]
+      if { $elt(type) != "button" && !$pareil } {
 	lappend newOptions [ list $elt(name)  $value ]
       }
       incr optnbr
@@ -1047,7 +1054,7 @@ namespace eval uci {
     }
 
     # Try to execute the analysis program:
-    if {[catch {set uciInfo(pipe$n) [open "| [list $analysisCommand] $analysisArgs" "r+"]} result]} {
+    if {[catch {set uciInfo(pipe$n) [open "| [list $analysisCommand] $analysisArgs[::sibyErreursMoteur]" "r+"]} result]} {
       if {$oldpwd != ""} { catch {cd $oldpwd} }
       tk_messageBox -title [::moderne::tr "Erreur au lancement du moteur" "Error starting engine"] -icon warning -type ok \
           -message [::moderne::tr "Impossible de lancer le programme :\n$analysisCommand :\n$result" "Unable to start the program:\n$analysisCommand:\n$result"]

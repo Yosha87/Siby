@@ -166,7 +166,7 @@ proc ::moderne::basesliste::ouvrir {} {
   set h [ttk::frame $w.haut -padding {8 6}]
   pack $h -side top -fill x
   ttk::button $h.ajouter -text [T "Ajouter une base…" "Add a database…"] -style Toolbutton \
-      -command ::moderne::mesbases::ajouter
+      -command ::moderne::basesliste::ajouter
   ttk::button $h.nouvelle -text [T "Nouvelle base…" "New database…"] -style Toolbutton \
       -command {::file::New ; ::moderne::basesliste::remplir}
   ttk::button $h.vue -text [T "Vue en icônes" "Tile view"] -style Toolbutton -command ::moderne::mesbases::vue
@@ -199,6 +199,21 @@ proc ::moderne::basesliste::ouvrir {} {
   ::createToplevelFinalize $w
   if {$devant ne {} && [winfo exists $devant]} { catch {$nb select $devant} }
   remplir
+}
+
+### "Add a database…": added (in « Other databases »), opened, first in the
+### list and chosen (Yosha 2026-11-16: nothing seemed to happen, the list
+### not refreshed and the database not opened)
+proc ::moderne::basesliste::ajouter {} {
+  variable w
+  variable choisirApres
+  set fs [::moderne::mesbases::ajouter]
+  if {![llength $fs]} { return }
+  set f [::moderne::mesbases::chemin [lindex $fs 0]]
+  set choisirApres $f
+  remplir
+  catch {::moderne::mesbases::ouvrirBase $f}
+  after 300 ::moderne::basesliste::remplir
 }
 
 ### Value of column col for file f (sort key, then text)
@@ -262,6 +277,21 @@ proc ::moderne::basesliste::remplir {} {
     dossier { set lignes [lsort -dictionary -index 4 $lignes] }
   }
   if {$inverse} { set lignes [lreverse $lignes] }
+  # (added in this session: first, the last added at the top, as in the
+  # tile view)
+  set ajoutees {}
+  set autres {}
+  foreach l $lignes {
+    set f [lindex $l 0]
+    if {[dict exists $::moderne::mesbases::ajouts $f]} {
+      lappend ajoutees [list [dict get $::moderne::mesbases::ajouts $f] $l]
+    } else {
+      lappend autres $l
+    }
+  }
+  set lignes [concat [lmap x [lsort -integer -decreasing -index 0 $ajoutees] {lindex $x 1}] $autres]
+  variable choisirApres
+  if {[info exists choisirApres] && $choisirApres ne {}} { set choisie $choisirApres ; set choisirApres {} }
   foreach l $lignes {
     lassign $l f nom n etat dossier - ouverte
     set id [$t insert {} end -values [list $nom $n $etat $dossier] -tags [expr {$ouverte ? "ouverte" : ""}]]

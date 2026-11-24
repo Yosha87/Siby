@@ -320,6 +320,8 @@ proc ::moderne::oracle::chercherSuivant {} {
     if {[info exists sacrifices($i)] && $sacrifices($i) >= 1} {
       variable fournisseur
       if {[info exists fournisseur] && $fournisseur ne {}} { catch {::moderne::bilan::demanderBon $i} }
+  # (the review's level waits for these values, Toby 2's level head)
+  catch {after idle ::moderne::niveau::suivant}
     }
   }
   if {[llength $aChercher]} { after 20 [list after idle ::moderne::oracle::chercherSuivant] }
@@ -680,6 +682,10 @@ proc ::moderne::oracle::lancer {} {
   set provAttente {}
   array unset toby
   array unset variantes
+  variable varLancees
+  array unset varLancees
+  variable jouesLances
+  array unset jouesLances
   variable tdata
   array unset tdata
   variable scores
@@ -742,7 +748,7 @@ proc ::moderne::oracle::lancerProcessus {w k} {
   set e [lindex $::engines(list) $moteurN]
   set ancien [pwd]
   catch {cd [lindex $e 3]}
-  set ok [catch {set p [open "| [list [lindex $e 1]] [lindex $e 2]" r+]} err]
+  set ok [catch {set p [open "| [list [lindex $e 1]] [lindex $e 2][::sibyErreursMoteur]" r+]} err]
   catch {cd $ancien}
   if {$ok} { return $err }
   ::moderne::prioriteBasse $p
@@ -1069,15 +1075,18 @@ proc ::moderne::oracle::distribuer {} {
   variable memo
   if {$mode ne "toby"} {
     set reste {}
-    set repris 0
+    set repris {}
     foreach job $file {
       set k [cleMemo $job]
-      if {[info exists memo($k)]} { traiter $job $memo($k) ; incr repris } else { lappend reste $job }
+      if {[info exists memo($k)]} { lappend repris $job $memo($k) } else { lappend reste $job }
     }
-    if {$repris} {
+    if {[llength $repris]} {
+      # (the queue set first, then the answers used: what they queue, a
+      # variation's next move or a mistake's variation, is kept)
       set file $reste
+      foreach {job l} $repris { traiter $job $l }
       variable memoRepris
-      incr memoRepris $repris
+      incr memoRepris [expr {[llength $repris] / 2}]
     }
   }
   foreach w $pool {
@@ -1147,6 +1156,7 @@ proc ::moderne::oracle::traiter {job lignes} {
   if {$type eq "eval"} {
     finiEval $i $lignes
     etat "[T "Évaluation" "Evaluation"] : [incr ::moderne::oracle::fait] / $::moderne::oracle::total"
+    variantesTot
   } elseif {$type eq "joue"} {
     finiJoue $i $lignes
   } elseif {$type eq "alt"} {
@@ -1184,8 +1194,10 @@ proc ::moderne::oracle::fini {w lignes} {
   } elseif {$type eq "eval"} {
     finiEval $i $lignes
     etat "[T "Évaluation" "Evaluation"] : [incr ::moderne::oracle::fait] / $::moderne::oracle::total"
+    variantesTot
   } elseif {$type eq "joue"} {
     finiJoue $i $lignes
+    variantesTot
   } elseif {$type eq "alt"} {
     finiAlt $i $lignes
     # (the process back to its usual number of lines)
@@ -1231,6 +1243,11 @@ proc ::moderne::oracle::finiEval {i lignes} {
     if {[lindex $l 0] eq "mate" && [lindex $l 1] == 0} { set c -10000 }
     if {[lindex $l 2] ne {}} { dict set scores($i) [lindex $l 2] [expr {$noirs ? -$c : $c}] }
   }
+  # (the level of play may wait for this position's values: told, as by
+  # finiJoue; else, the played moves searched early, the last values came
+  # from evaluations only and the level waited for ever, the review with
+  # it, Windows 2026-11-22)
+  catch {after idle ::moderne::niveau::suivant}
 }
 
 ### Moves played that the engine did not list among its best: one search
@@ -1241,10 +1258,11 @@ proc ::moderne::oracle::debutJoues {} {
   variable file
   set file {}
   set nb [llength $positions]
+  variable jouesLances
   for {set i 0} {$i < $nb - 1} {incr i} {
     if {![dansPlage $i] || ![info exists scores($i)]} { continue }
     set u [lindex $positions $i 1]
-    if {$u ne {} && ![dict exists $scores($i) $u]} { lappend file [list joue $i] }
+    if {$u ne {} && ![dict exists $scores($i) $u] && ![info exists jouesLances($i)]} { lappend file [list joue $i] }
     # (a sacrifice: its position searched wider, 6 lines, for the value of
     # the other moves; a promotion to less than a queen: the queen's too)
     if {![catch {candidatSacrifice $i} c] && $c} { lappend file [list alt $i] }
@@ -1263,6 +1281,7 @@ proc ::moderne::oracle::finiJoue {i lignes} {
   if {[lindex $l1 0] eq "mate" && [lindex $l1 1] == 0} { set c -10000 }
   if {[lindex $positions $i 3] eq "black"} { set c [expr {-$c}] }
   dict set scores($i) [lindex $positions $i 1] $c
+  catch {after idle ::moderne::niveau::suivant}
 }
 
 ### The wider search of a sacrifice: each move's value kept with the others
@@ -1766,6 +1785,7 @@ proc ::moderne::oracle::finiToby {} {
 
 ### Mistakes (? and ??) of the range: one job each (the best move)
 proc ::moderne::oracle::debutVariantes {} {
+  variable varLancees
   variable positions
   variable evals
   variable etat
@@ -1785,6 +1805,7 @@ proc ::moderne::oracle::debutVariantes {} {
       lassign [erreur $i] s
       set m [lindex $evals($i) 1]
     }
+    if {[info exists varLancees($i)]} { continue }
     if {$s in {? ??} && $m ni [list {} [lindex $positions $i 1]]} {
       lappend file [list var $i [list $m]]
     }
@@ -1853,7 +1874,54 @@ proc ::moderne::oracle::finiVariante {i coups lignes} {
   # villain's best answer is that of the position before it)
   if {[llength $coups] > 1 && [llength $coups] % 2 == 0} { set coups [lrange $coups 0 end-1] }
   set variantes($i) [list $coups $esB]
-  etat "[T "Variantes" "Variations"] : [incr ::moderne::oracle::fait] / $::moderne::oracle::total"
+  # (a variation started early, during the evaluations: not counted there)
+  variable etat
+  if {$etat eq "variantes"} {
+    etat "[T "Variantes" "Variations"] : [incr ::moderne::oracle::fait] / $::moderne::oracle::total"
+  }
+}
+
+### A mistake's variation started as soon as the mistake is known, during
+### the evaluations, instead of after them all: a variation is a chain of
+### searches, one after another, and at the end of the evaluations the
+### other processes waited for it (a quarter of a review's time, Yosha
+### 2026-11-22: "le bilan rapide"). Only a mistake whose verdict is final:
+### both evaluations known and the move played among the searched moves
+### (else its own search comes later, debutJoues). Each search starts
+### from a cleared memory (ucinewgame): the same values in any order.
+proc ::moderne::oracle::variantesTot {} {
+  variable form
+  variable mode
+  variable etat
+  variable evals
+  variable scores
+  variable positions
+  variable varLancees
+  variable file
+  if {$mode eq "toby" || $etat ne "moteur"} { return }
+  set nb [llength $positions]
+  # (the move played not among the searched ones: its own search at once,
+  # rather than in the pass after all the evaluations, debutJoues)
+  variable jouesLances
+  foreach i [array names evals] {
+    if {$i >= $nb - 1 || [info exists jouesLances($i)] || ![dansPlage $i] || ![info exists scores($i)]} { continue }
+    set u [lindex $positions $i 1]
+    set jouesLances($i) 1
+    if {$u ne {} && ![dict exists $scores($i) $u]} { set file [linsert $file 0 [list joue $i]] }
+  }
+  if {!$form(variantes)} { return }
+  foreach k [array names evals] {
+    set i $k
+    if {$i >= $nb - 1 || [info exists varLancees($i)] || ![info exists evals([expr {$i + 1}])] || ![dansPlage $i]} { continue }
+    set joue [lindex $positions $i 1]
+    if {![info exists scores($i)] || ![dict exists $scores($i) $joue]} { continue }
+    lassign [erreur $i] sym
+    set m [lindex $evals($i) 1]
+    set varLancees($i) 1
+    if {$sym in {? ??} && $m ni [list {} $joue]} {
+      set file [linsert $file 0 [list var $i [list $m]]]
+    }
+  }
 }
 
 proc ::moderne::oracle::fermerMoteur {} {

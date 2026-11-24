@@ -235,7 +235,18 @@ proc ::moderne::moteur::lignes {n} {
   $h configure -state normal
   $h delete 1.0 end
   set i 0
+  set vues [vues $n]
+  # (no line shown: no column titles either; back with the first line)
+  set w .analysisWin$n
+  if {[winfo exists $w.colonnes]} {
+    if {$vues == 0 && [winfo manager $w.colonnes] ne {}} {
+      pack forget $w.colonnes
+    } elseif {$vues > 0 && [winfo manager $w.colonnes] eq {}} {
+      pack $w.colonnes -side top -fill x {*}[::moderne::avantHist $w]
+    }
+  }
   foreach pv $analysis(multiPV$n) {
+    if {$i >= $vues} { break }
     lassign $pv prof score coups mat
     if {$coups eq {}} { continue }
     if {$mat ne {} && $mat != 0} {
@@ -344,7 +355,36 @@ proc ::moderne::moteur::nom {n} { return [lindex $::engines(list) $n 0] }
 proc ::moderne::moteur::lignesDefaut {nom} {
   variable lignesMem
   if {[dict exists $lignesMem $nom]} { return [dict get $lignesMem $nom] }
+  # (Toby: its moves listed, up to 8; the rest in « Other moves »)
+  if {[string match -nocase *toby* $nom]} { return 8 }
   return 4
+}
+
+### Lines shown in engine n's panel, 0 to 8 (0: the evaluation and the
+### gauge only, Yosha 2026-11-16). Stockfish still computes one line at 0
+### (its evaluation); Toby's moves beyond go into « Other moves »
+proc ::moderne::moteur::vues {n} {
+  variable vues
+  variable lignesMem
+  # (by engine name, not panel number: engines swapped places kept the
+  # other's count, test reordre_dispo)
+  set nom [nom $n]
+  if {[dict exists $lignesMem $nom] || [string match -nocase *toby* $nom]} {
+    set v [lignesDefaut $nom]
+  } else {
+    set v 1
+    catch {set v $::analysis(multiPVCount$n)}
+  }
+  # (shown by the bar's « Lines − + »)
+  set vues($n) $v
+  return $v
+}
+
+### Rows a panel is sized for: the lines shown, at most 4 (more scroll,
+### unless the panel is made taller by hand)
+proc ::moderne::moteur::rangsVisibles {nb} {
+  if {![string is integer -strict $nb] || $nb < 0} { return 1 }
+  return [expr {min($nb, 4)}]
 }
 
 ### {min max} of engine n's UCI option, or {} if it does not have it
@@ -400,6 +440,7 @@ proc ::moderne::moteur::optionsDepart {n} {
   # (the last "Lines − +" choice wins over the engine's configuration)
   if {$b ne {} && !$toby && ([regle $n MultiPV] eq {} || [dict exists $lignesMem $nom])} {
     set v [expr {min([lignesDefaut $nom], [lindex $b 1])}]
+    set v [expr {max(1, $v)}]
     lappend envoyer MultiPV $v
     set analysis(multiPVCount$n) $v
   }
@@ -434,14 +475,32 @@ proc ::moderne::moteur::envoyerOption {n nomOption valeur} {
 
 proc ::moderne::moteur::changerLignes {n d} {
   variable lignesMem
-  set b [bornes $n MultiPV]
-  if {$b eq {}} { return }
-  lassign $b min max
-  set v [expr {max($min, min($max, $::analysis(multiPVCount$n) + $d))}]
-  if {$v == $::analysis(multiPVCount$n)} { return }
-  set ::analysis(multiPVCount$n) $v
+  variable vues
+  set toby [string match -nocase *toby* [nom $n]]
+  if {$toby} {
+    set max 8
+  } else {
+    set b [bornes $n MultiPV]
+    if {$b eq {}} { return }
+    set max [lindex $b 1]
+  }
+  set avant [vues $n]
+  set v [expr {max(0, min($max, $avant + $d))}]
+  if {$v == $avant} { return }
+  set vues($n) $v
   dict set lignesMem [nom $n] $v
-  changePVSize $n
+  if {$toby} {
+    catch {::moderne::toby::afficher $n}
+    after idle [list catch [list ::moderne::toby::ajusterHauteur $n]]
+    return
+  }
+  # (the engine computes at least one line: the evaluation)
+  set m [expr {max(1, $v)}]
+  if {$m != $::analysis(multiPVCount$n)} {
+    set ::analysis(multiPVCount$n) $m
+    changePVSize $n
+  }
+  catch {lignes $n}
   after idle [list ::moderne::moteur::ajusterHauteur $n]
 }
 
@@ -452,11 +511,11 @@ proc ::moderne::moteur::ajusterHauteur {n} {
   if {[winfo exists $w.toby]} { return }
   # Toby before its table: the height it had last time
   variable hauteurMem
-  if {[string match -nocase *toby* [nom $n]] && [dict exists $hauteurMem "[nom $n]|toby"]} {
-    catch {::moderne::docks::ajusterHauteur .fdockanalysisWin$n [dict get $hauteurMem "[nom $n]|toby"]}
+  if {[string match -nocase *toby* [nom $n]] && [dict exists $hauteurMem "[nom $n]|toby|[::moderne::toby::rangsTableau [lignesDefaut [nom $n]]]"]} {
+    catch {::moderne::docks::ajusterHauteur .fdockanalysisWin$n [dict get $hauteurMem "[nom $n]|toby|[::moderne::toby::rangsTableau [lignesDefaut [nom $n]]]"]}
     return
   }
-  set nb $::analysis(multiPVCount$n)
+  set nb [vues $n]
   # engine not ready yet: the number of lines it will have (otherwise the
   # height would be redone at its first lines and the board would move)
   if {![info exists ::analysis(uciok$n)] || !$::analysis(uciok$n)} {
@@ -466,12 +525,12 @@ proc ::moderne::moteur::ajusterHauteur {n} {
     set r [regle $n MultiPV]
     if {$r ne {} && ![dict exists $lignesMem $nom]} { set nb $r }
   }
-  if {![string is integer -strict $nb] || $nb < 1} { set nb 1 }
+  set nb [rangsVisibles $nb]
   set ligne [pasLigne]
   variable barreMesuree [winfo reqheight $w.b]
   set h [expr {[winfo reqheight $w.b] + $nb * $ligne + 10}]
   if {[winfo exists $w.entete]} { incr h [winfo reqheight $w.entete] }
-  if {[winfo exists $w.colonnes]} { incr h [winfo reqheight $w.colonnes] }
+  if {[winfo exists $w.colonnes] && [winfo manager $w.colonnes] ne {}} { incr h [winfo reqheight $w.colonnes] }
   if {[winfo exists $w.text] && [winfo manager $w.text] ne {}} { incr h [winfo reqheight $w.text] }
   # The evaluation header and the column titles appear with the first
   # lines: until then, the height this engine had last time (so the board
@@ -518,14 +577,15 @@ proc ::moderne::moteur::hauteurPrevue {n} {
   variable lignesMem
   set nom [lindex [lindex $::engines(list) $n] 0]
   if {$nom eq {}} { return {} }
-  if {[string match -nocase *toby* $nom] && [dict exists $hauteurMem "$nom|toby"]} {
-    return [dict get $hauteurMem "$nom|toby"]
+  if {[string match -nocase *toby* $nom] && [dict exists $hauteurMem "$nom|toby|[::moderne::toby::rangsTableau [lignesDefaut $nom]]"]} {
+    return [dict get $hauteurMem "$nom|toby|[::moderne::toby::rangsTableau [lignesDefaut $nom]]"]
   }
   set nb [lignesDefaut $nom]
   catch {
     set r [regle $n MultiPV]
     if {$r ne {} && ![dict exists $lignesMem $nom]} { set nb $r }
   }
+  set nb [rangsVisibles $nb]
   if {[dict exists $hauteurMem "$nom|$nb"]} { return [dict get $hauteurMem "$nom|$nb"] }
   return {}
 }
@@ -546,7 +606,9 @@ proc ::moderne::moteur::hauteurEstimee {n} {
   set barre [expr {[info exists barreMesuree] ? $barreMesuree : $ls + 13}]
   set pas [pasLigne]
   if {[string match -nocase *toby* $nom]} {
-    return [expr {$barre + $entete + $titres + 4 * $pas + 6 + 2}]
+    set r [::moderne::toby::rangsTableau [lignesDefaut $nom]]
+    if {$r == 0} { return [expr {$barre + $entete + 2}] }
+    return [expr {$barre + $entete + $titres + $r * $pas + 6 + 2}]
   }
   set nb [lignesDefaut $nom]
   catch {
@@ -554,6 +616,8 @@ proc ::moderne::moteur::hauteurEstimee {n} {
     variable lignesMem
     if {$r ne {} && ![dict exists $lignesMem $nom]} { set nb $r }
   }
+  set nb [rangsVisibles $nb]
+  if {$nb == 0} { set titres 0 }
   return [expr {$barre + $nb * $pas + 10 + $entete + $titres}]
 }
 
@@ -584,7 +648,7 @@ proc ::moderne::moteur::reglagesBarre {n} {
   set b $w.b
   if {![winfo exists $b] || [winfo exists $b.lc]} { return }
   set toby [string match -nocase *toby* [nom $n]]
-  set avecLignes [expr {!$toby && [bornes $n MultiPV] ne {}}]
+  set avecLignes [expr {$toby || [bornes $n MultiPV] ne {}}]
   set avecCPU [expr {[bornes $n Threads] ne {}}]
   if {!$avecLignes && !$avecCPU} { return }
   catch {pack forget $b.multipv}
@@ -595,7 +659,9 @@ proc ::moderne::moteur::reglagesBarre {n} {
   if {$avecLignes} {
     ttk::label $b.lc.ll -text [T "Lignes" "Lines"] -foreground [::moderne::c texteDoux]
     ttk::button $b.lc.lm -text "−" -width 1 -style $petit -command [list ::moderne::moteur::changerLignes $n -1]
-    ttk::label $b.lc.lv -textvariable ::analysis(multiPVCount$n) -width 2 -anchor center -font font_Bold
+    variable vues
+    set vues($n) [vues $n]
+    ttk::label $b.lc.lv -textvariable ::moderne::moteur::vues($n) -width 2 -anchor center -font font_Bold
     ttk::button $b.lc.lp -text "+" -width 1 -style $petit -command [list ::moderne::moteur::changerLignes $n 1]
     pack $b.lc.ll $b.lc.lm $b.lc.lv $b.lc.lp -side left
     ::utils::tooltip::Set $b.lc.ll [T "Nombre de lignes (variantes) affichées" "Number of lines shown"]

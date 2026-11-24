@@ -17,7 +17,43 @@ set scidVersionDate {May 20, 2026}
 # Siby's own version, the one shown to users (beta until the 1.0
 # release); scidVersion above is the internal version of the database
 # engine (checked against sc_info version), never shown
-set sibyVersion "1.0 beta 6"
+set sibyVersion "1.0 beta 9.2"
+# (when Siby started: the start's times in siby.log)
+set ::sibyT0 [clock milliseconds]
+### The start's steps and its slow calls, written to siby.log when the
+### window is shown (Yosha 2026-11-17: the window came after 16 s)
+set ::sibyChrono {}
+proc ::sibyChrono {quoi} {
+  if {[info exists ::sibyChronoFini]} { return }
+  lappend ::sibyChrono "$quoi [format %.1f [expr {([clock milliseconds] - $::sibyT0) / 1000.0}]]"
+}
+proc ::sibyChronoSuivre {cmds} {
+  foreach c $cmds {
+    if {![llength [info commands $c]]} { continue }
+    catch {trace add execution $c enter [list ::sibyChronoEntree $c]}
+    catch {trace add execution $c leave [list ::sibyChronoSortie $c]}
+    lappend ::sibyChronoSuivis $c
+  }
+}
+proc ::sibyChronoEntree {c args} { lappend ::sibyChronoPile($c) [clock milliseconds] }
+proc ::sibyChronoSortie {c args} {
+  if {![info exists ::sibyChronoPile($c)] || ![llength $::sibyChronoPile($c)]} { return }
+  set t0 [lindex $::sibyChronoPile($c) end]
+  set ::sibyChronoPile($c) [lrange $::sibyChronoPile($c) 0 end-1]
+  set d [expr {[clock milliseconds] - $t0}]
+  if {$d >= 250} { ::sibyChrono "[string trimleft $c :]=[format %.1f [expr {$d / 1000.0}]]s" }
+}
+proc ::sibyChronoFin {} {
+  if {[info exists ::sibyChronoFini]} { return }
+  set ::sibyChronoFini 1
+  if {[info exists ::sibyChronoSuivis]} {
+    foreach c $::sibyChronoSuivis {
+      catch {trace remove execution $c enter [list ::sibyChronoEntree $c]}
+      catch {trace remove execution $c leave [list ::sibyChronoSortie $c]}
+    }
+  }
+  catch {::moderne::journal "Siby: start steps (s after the start): [join $::sibyChrono {, }]"}
+}
 
 package require Tcl 8.5
 package require Tk  8.5
@@ -119,6 +155,7 @@ proc ::sibyDemarrage::recentrer {} {
   catch {variable centre [sc_centrer [wm frame $w]]}
 }
 proc ::sibyDemarrage::avancer {pct} {
+  catch {::sibyChrono "$pct%"}
   set w .sibyDemarrage
   if {![winfo exists $w]} { return }
   variable largeur
@@ -1243,11 +1280,79 @@ foreach type {engine viewer} {
 
 set autoRaise 1
 
+### Siby: docked window d (.fdock…) left in a group that is not on screen,
+### e.g. the hidden cover of the broadcasts (Yosha 2026-11-17: no notation
+### in the Lab, Windows › Notation did nothing): put back in the group of
+### the game list, else in a group of the main window on screen. 1 if moved
+proc ::sibyRapatrier {d} {
+  if {![winfo exists $d] || ![winfo exists .pw]} { return 0 }
+  set nb {}
+  catch {set nb [::docking::find_tbn $d]}
+  # (a cover's groups are forgotten by the layout when it is hidden: looked
+  # for there too)
+  if {$nb eq {}} {
+    foreach x {.directCouvre.pw.bas .directCouvre.pw.haut .jeuCouvre.nb} {
+      if {[winfo exists $x] && ![catch {$x tabs} t] && $d in $t} { set nb $x ; break }
+    }
+  }
+  if {$nb eq {} || ![winfo exists $nb] || [winfo viewable $nb]} { return 0 }
+  # (the broadcasts' view open, its game view being built or its list shown
+  # over it: what it holds is not lost; taken out, the game view showed no
+  # notation, Yosha 2026-11-21)
+  if {[string match .directCouvre* $nb] && [info exists ::moderne::direct::superpose] && $::moderne::direct::superpose ne {}} { return 0 }
+  set dest {}
+  # the broadcasts' game view on screen: into its lower group (Windows ›
+  # Notation brings the notation wherever one is, Yosha 2026-11-17)
+  if {[winfo exists .directCouvre.pw.bas] && [winfo viewable .directCouvre.pw.bas]} {
+    set dest .directCouvre.pw.bas
+    set ::docking::tbs($dest) .directCouvre.pw
+  } else {
+    # (only out of a hidden cover: a hidden page of the Lab, e.g. the
+    # preparation's tab holding the notation, keeps it)
+    if {![string match .directCouvre* $nb] && ![string match .jeuCouvre* $nb]} { return 0 }
+  }
+  # (its own group in the Lab: the notation with the game list, the
+  # tablebase with the opening library)
+  if {$dest eq {} && $d in {.fdockpgnWin .fdocktbWin .fdockbilanWin}} { catch {set dest [::moderne::direct::maisonLab $d]} }
+  foreach v {.fdockglistWin .fdockmesBasesWin .fdocktbWin} {
+    if {$dest ne {}} { break }
+    if {$v eq $d || ![winfo exists $v]} { continue }
+    set x [::docking::find_tbn $v]
+    if {$x ne {} && [winfo exists $x] && [winfo viewable $x]} { set dest $x ; break }
+  }
+  if {$dest eq {}} {
+    foreach t [array names ::docking::tbs] {
+      if {[winfo exists $t] && [winfo class $t] eq "TNotebook" && [winfo viewable $t] && ".fdockmain" ni [$t tabs]} { set dest $t ; break }
+    }
+  }
+  if {$dest eq {}} { return 0 }
+  set titre [$nb tab $d -text]
+  if {[string trim $titre] eq {} && [info exists ::docking::titres($d)]} { set titre $::docking::titres($d) }
+  catch {$nb forget $d}
+  if {[catch {$dest insert 0 $d -text $titre}]} { catch {$dest add $d -text $titre} }
+  catch {$dest select $d}
+  catch {::docking::setTabStatus}
+  catch {::moderne::journal "Siby: $d put back from $nb (not on screen) into $dest"}
+  return 1
+}
+
+### Siby: an engine's error output on Windows, sent to NUL. Siby has no
+### console there: an engine writing to it (Toby's Python, its lc0 or
+### Stockfish) could stop answering, "go" without "bestmove" (Toby's
+### Windows tests, 2026-11-18). Not into the UCI channel (2>@1): its lines
+### are not UCI. Elsewhere as before.
+proc ::sibyErreursMoteur {} {
+  if {$::tcl_platform(platform) eq "windows"} { return " 2>NUL" }
+  return {}
+}
+
 proc raiseWin {w} {
   global autoRaise
     if {$w == "." } {
      set w .main
     }
+    # (Siby: a docked window stuck in a group not on screen, brought back)
+    if {$::docking::USE_DOCKING} { catch {::sibyRapatrier .fdock[string range $w 1 end]} }
     if {$::docking::USE_DOCKING} {
       if {[catch {::docking::raiseTab $w}]} {
         # dammit, undocked windows aren't raising. fixme
@@ -1292,6 +1397,52 @@ set autoResizeBoard 1
 # if undocked window : sets the title of the toplevel window
 # if docked : sets the name of the tab
 # w : name of the toplevel window
+### Siby: the title of docked window w set again once its tab is in a
+### group (tried for 10 s)
+proc ::sibyTitreApres {w title {n 0}} {
+  set f .fdock[string range $w 1 end]
+  if {![winfo exists $f]} { return }
+  catch {after cancel $::sibyTitreAttente($w)}
+  if {[info exists ::docking::titres($f)] && $::docking::titres($f) ne $title} { return }
+  set nb {}
+  catch {set nb [::docking::find_tbn $f]}
+  if {$nb ne {}} { catch {$nb tab $f -text $title} ; return }
+  if {$n < 50} { set ::sibyTitreAttente($w) [after 200 [list ::sibyTitreApres $w $title [incr n]]] }
+}
+
+### Siby: the tab of docked window w titled title, whatever group holds it
+### (also one the layout does not know); what was wrong written to siby.log
+### once per session
+proc ::sibyVerifierTitre {w title} {
+  if {!$::docking::USE_DOCKING} { return }
+  set f .fdock[string range $w 1 end]
+  if {![winfo exists $f]} { return }
+  if {[string range $title 0 5] eq "Siby: " && [string length $title] > 6} { set title [string range $title 6 end] }
+  set nb {}
+  catch {set nb [::docking::find_tbn $f]}
+  set trouve $nb
+  if {$nb eq {}} {
+    # every notebook of the main window
+    set aVoir [winfo children .]
+    while {[llength $aVoir]} {
+      set x [lindex $aVoir 0]
+      set aVoir [lrange $aVoir 1 end]
+      if {[winfo class $x] eq "TNotebook" && ![catch {$x tabs} t] && $f in $t} { set nb $x ; break }
+      lappend aVoir {*}[winfo children $x]
+    }
+  }
+  if {$nb eq {}} { return }
+  set avant {}
+  catch {set avant [$nb tab $f -text]}
+  if {$avant eq $title} { return }
+  catch {$nb tab $f -text $title}
+  set ::docking::titres($f) $title
+  if {![info exists ::sibyTitreSignale($f)]} {
+    set ::sibyTitreSignale($f) 1
+    catch {::moderne::journal "Siby: tab title of $w put right: was \"$avant\", group $nb (found by the layout: \"$trouve\"), undocked [::docking::isUndocked $w], manager [winfo manager $f]"}
+  }
+}
+
 proc setTitle { w title } {
   if { $::docking::USE_DOCKING && ! [ ::docking::isUndocked $w ]} {
     set f .fdock[ string range $w 1 end ]
@@ -1299,7 +1450,14 @@ proc setTitle { w title } {
       set nb ""
     }
 
-    if { $nb == "" } {
+    if { $nb == "" && [winfo exists $f] } {
+      # (Siby: a docked tab out of its group for a while, e.g. under a
+      # cover: its title kept and set once it is back. It went to Siby's
+      # window title instead, and the game list's tab kept the first
+      # database's name, Yosha 2026-11-16)
+      set ::docking::titres($f) $title
+      ::sibyTitreApres $w $title
+    } elseif { $nb == "" } {
       wm title $w $title
     } else  {
       # if target is main board, update the global window instead

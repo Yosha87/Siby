@@ -259,7 +259,7 @@ proc ::moderne::erreurs::demarrerMoteur {e} {
   set dir [lindex $e 3]
   set ancien [pwd]
   catch {cd $dir}
-  set ok [catch {set pipe [open "| [list $cmd] $args" r+]} err]
+  set ok [catch {set pipe [open "| [list $cmd] $args[::sibyErreursMoteur]" r+]} err]
   catch {cd $ancien}
   if {$ok} {
     [cadre].etat configure -text "[T "Impossible de lancer le moteur" "Cannot start the engine"] : $err"

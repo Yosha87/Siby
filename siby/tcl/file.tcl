@@ -345,7 +345,7 @@ proc ::file::Open {{fName ""} {parent .} {update 1}} {
 	tk_messageBox -icon warning -type ok -parent $parent \
 	    -title [::moderne::tr "Siby : erreur d'ouverture du fichier" "Siby: Error opening file"] -message $result
       } else {
-	doPgnFileImport $fName [::moderne::tr "Ouverture de [file tail $fName] en lecture seule\n" "Opening [file tail $fName] read-only\n"]
+	doPgnFileImport $fName [::moderne::tr "Ouverture de [file tail $fName] en lecture seule\n" "Opening [file tail $fName] read-only\n"] 0 1
 	sc_base type [sc_base current] 3
 	# Siby: editable PGN database, saved to the file
 	catch {::moderne::pgnfichier::ouvert [sc_base current] $fName}
@@ -771,7 +771,7 @@ proc ::file::openBaseAsTree { { fName "" } } {
       tk_messageBox -icon warning -type ok -parent . -title [::moderne::tr "Siby : erreur d'ouverture du fichier" "Siby: Error opening file"] -message $result
       return
     } else {
-      doPgnFileImport $fName [::moderne::tr "Ouverture de [file tail $fName] en lecture seule\n" "Opening [file tail $fName] read-only\n"]
+      doPgnFileImport $fName [::moderne::tr "Ouverture de [file tail $fName] en lecture seule\n" "Opening [file tail $fName] read-only\n"] 0 1
       sc_base type [sc_base current] 3
       set ::initialDir(pgn) [file dirname $fName]
       set ::initialDir(file) [file tail $fName]

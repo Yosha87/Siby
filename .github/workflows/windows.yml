@@ -8,6 +8,8 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -33,3 +35,14 @@ jobs:
       #     github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
       #     wait-for-completion: true
       #     output-artifact-directory: signed
+      # A tag v*: a GitHub release with the package built here (unsigned
+      # until SignPath accepts the project)
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Siby-windows-x64.zip \
+            --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "Siby ${GITHUB_REF_NAME#v}" \
+            --notes "Windows package built from these sources by the Windows package workflow (not signed yet). Downloads and Linux package: https://siby.tribychess.org/"

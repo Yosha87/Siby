@@ -1210,7 +1210,11 @@ proc setGamelistTitle {} {
   catch {set otb [string trim [::moderne::otb::texteEtat]]}
   set tout {}
   catch {if {$::moderne::glisser::tout} { set tout " • [::moderne::tr "toutes sélectionnées" "all selected"]" }}
-  setTitle .glistWin "[tr WindowsGList]: $fname [sc_filter count]/[sc_base numGames] $::tr(games)$tout[expr {$otb eq {} ? {} : " $otb"}]"
+  set titre "[tr WindowsGList]: $fname [sc_filter count]/[sc_base numGames] $::tr(games)$tout[expr {$otb eq {} ? {} : " $otb"}]"
+  if {[catch {setTitle .glistWin $titre} err]} { catch {::moderne::journal "Siby: game list title: $err"} }
+  # (Yosha 2026-11-17, Windows: the tab kept "[clipbase] 0/0" all along,
+  # not reproduced: checked, put right, and the cause written to siby.log)
+  catch {::sibyVerifierTitre .glistWin $titre}
 }
 
 ### Called by refreshWindows (file.tcl) when db is changed

@@ -336,7 +336,7 @@ proc ::moderne::menubar::description {nom} {
       set l {
         {old .menu.help {helpWindow Contents} "Aide" "Help"}
         sep
-        {cmd "Rechercher une mise à jour de Siby" "Check for Siby updates" {::moderne::majsiby::verifier 1}}
+        {cmd "Rechercher une mise à jour de Siby" "Check for Siby updates" {::moderne::majsiby::verifier 1 ; catch {::moderne::majtoby::verifier 1}}}
         {cmd "Signaler un problème…" "Report a problem…" {::moderne::rapport::demander}}
         {cmd "Soutenir Triby…" "Support Triby…" {openURL $::moderne::merci::soutien}}
         {cmd "Remerciements" "Thanks" ::moderne::merci::ouvrir}

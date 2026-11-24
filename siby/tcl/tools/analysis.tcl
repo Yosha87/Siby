@@ -2361,7 +2361,7 @@ proc makeAnalysisWin {{n 0} {options {}}} {
   if {$prelance ne {}} {
     set analysis(pipe$n) $prelance
     set result {}
-  } elseif {[catch {set analysis(pipe$n) [open "| [list $analysisCommand] $analysisArgs" "r+"]} result]} {
+  } elseif {[catch {set analysis(pipe$n) [open "| [list $analysisCommand] $analysisArgs[::sibyErreursMoteur]" "r+"]} result]} {
     if {$oldpwd != {}} { catch {cd $oldpwd} }
     if {[winfo exists .enginelist]} {
       set parent .enginelist
@@ -4149,6 +4149,16 @@ proc sendPosToEngineUCI {n  {delay 0}} {
     }
 
 
+    # Siby: Toby 2 prepares its product (Accurate: lc0 probe, self-check)
+    # at "isready": its readyok awaited up to 2 minutes before the go
+    if {[info exists ::moderne::toby::attentePrep($n)]} {
+      if {$analysis(waitForReadyOk$n) && [clock seconds] - $::moderne::toby::attentePrep($n) < 120} {
+        set analysis(after$n) [after 100 [list sendPosToEngineUCI $n]]
+        return
+      }
+      unset ::moderne::toby::attentePrep($n)
+    }
+
     if {$analysis(waitForReadyOk$n) } {
         # If too slow something is wrong: give up
         if {$delay > 250} {
@@ -4192,6 +4202,12 @@ proc sendPosToEngineUCI {n  {delay 0}} {
 	  return
         }
 
+	# Siby: Toby 2's product (re)sent: setoption, isready, readyok, then go
+	if {![catch {::moderne::toby::preparerProduit $n} prep] && $prep} {
+	  set ::moderne::toby::attentePrep($n) [clock seconds]
+	  set analysis(after$n) [after 100 [list sendPosToEngineUCI $n]]
+	  return
+	}
 	catch {::moderne::toby::avantGo $n} ;# Siby: Toby's options before each go
 	catch {::moderne::lc0::avantGo $n}
 	if {$analysis(movelist$n) == {}} {

@@ -2342,6 +2342,18 @@ proc initDragDrop {} {
 }
 
 catch {::sibyDemarrage::avancer 50}
+# (the slow calls of the rest of the start, in siby.log)
+catch {::sibyChronoSuivre {::file::Open ::docking::layout_restore ::moderne::disposition::appliquer
+  ::moderne::disposition::lab ::moderne::mesbases::superposer ::moderne::mesbases::vue
+  ::moderne::mesbases::remplir ::windows::gamelist::Open ::windows::gamelist::Refresh
+  ::moderne::lab::fabriquerPage ::updateBoard ::moderne::menubar::installer ::moderne::retirerBarres
+  ::moderne::mesbases::prelireReference ::moderne::revelerFenetre ::moderne::biblio::maj
+  ::moderne::biblio::actualiser ::moderne::direct::preparer ::moderne::prepa::ouvrir
+  ::docking::lancerDifferees ::docking::fenetreDifferee ::moderne::lab::fabriquerPage
+  ::moderne::mesbases::prelireReference ::moderne::nsb::verifier ::moderne::gaby::demarrage
+  ::windows::switcher::Refresh ::moderne::biblio::remplir ::moderne::biblio::afficher
+  ::moderne::otb::texteEtat ::moderne::docks::finRestauration ::moderne::prepa::baseOuverte
+  ::moderne::onglets::majTout ::updateStatusBar ::updateTitle ::updateMenuStates}}
 if { $::docking::USE_DOCKING } {
   setTitle .main [ ::tr "Board" ]
   # restore geometry

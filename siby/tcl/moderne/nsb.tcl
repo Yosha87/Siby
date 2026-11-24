@@ -368,6 +368,23 @@ proc ::moderne::nsb::annonce {titre pct} {
     $a.v configure -text {}
   }
   raise $a
+  # (a message alone, without a bar and not of a task under way ("…"):
+  # closed after 8 s; "1 game deleted" stayed until another message came,
+  # Yosha 2026-11-18). A new message starts the count again.
+  variable fermeture
+  catch {after cancel $fermeture}
+  set texte [$a.t cget -text]
+  if {$pct < 0 && ![regexp {…\s*$|\.\.\.\s*$} $texte]} {
+    set fermeture [after 8000 [list ::moderne::nsb::fermerSi $texte]]
+  }
+}
+
+### Closed if it still says texte (not replaced meanwhile)
+proc ::moderne::nsb::fermerSi {texte} {
+  if {![winfo exists .annonceNsb]} { return }
+  if {[.annonceNsb.t cget -text] ne $texte} { return }
+  if {[winfo ismapped .annonceNsb.p]} { return }
+  finAnnonce
 }
 
 proc ::moderne::nsb::finAnnonce {} {

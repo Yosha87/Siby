@@ -260,6 +260,8 @@ proc ::moderne::pendule::majTout {w} {
     set marche 0
     catch {set marche $::gameclock::data(running$n)}
     set r [reste $n]
+    # (the side whose flag fell: 00:00, whatever was added after)
+    if {[info exists ::moderne::horloge::tombe($n)]} { set r 0 }
     if {$fini} {
       lassign [texteJeu [expr {max(0, $r)}]] txt dix
     } else {
@@ -280,9 +282,7 @@ proc ::moderne::pendule::majTout {w} {
     $f.t configure -text $txt -foreground $texte
     $f.d configure -text $dix -foreground $texte
     # flag fell: end of the game
-    if {$fini && $marche && $r <= 0 && !$::moderne::jeu::fini} {
-      after idle [list ::moderne::jeu::fin [expr {$n == 1 ? 0 : 1}] temps]
-    }
+    if {$fini && $marche && $r <= 0} { ::moderne::horloge::tombee $n }
   }
   # "Resume" button (game paused) and moves
   catch {
@@ -399,10 +399,15 @@ proc ::moderne::horloge::installer {} {
     ::gameclock::reset_origine $n
     catch {unset ::moderne::horloge::ms($n)}
     catch {unset ::moderne::horloge::t0($n)}
+    catch {unset ::moderne::horloge::tombe($n)}
     # (start of a game: ply from which the clocks run, see start)
     set ::moderne::horloge::plyDepart [sc_pos location]
   }
   proc ::gameclock::add {n value} {
+    # (no increment once the flag has fallen: a move played after the time
+    # was out gave its 2 s back, and the game ended on time with « 00:00.8 »
+    # on the clock, Yosha 2026-11-14)
+    if {[::moderne::horloge::tombee $n]} { return }
     if {[info exists ::moderne::horloge::ms($n)]} {
       set ::moderne::horloge::ms($n) [expr {$::moderne::horloge::ms($n) - $value * 1000}]
       ::moderne::horloge::synchro $n
@@ -435,9 +440,25 @@ proc ::moderne::horloge::installer {} {
     unset ::moderne::horloge::t0($n)
     set ::moderne::horloge::ms($n) [expr {$::moderne::horloge::ms($n) + $ecoule}]
     ::moderne::horloge::synchro $n
+    # (out of time when the move is played: lost then, not at the clock's
+    # next refresh)
+    ::moderne::horloge::tombee $n
     set ::gameclock::data(prevcounter$n) $::gameclock::data(counter$n)
     return [expr {int(round($ecoule / 1000.0))}]
   }
+}
+
+### Side n's flag fallen (time control with increment, time out, the game
+### not over yet: its end is asked for once)? Kept until the clock is reset
+proc ::moderne::horloge::tombee {n} {
+  variable tombe
+  if {[info exists tombe($n)]} { return 1 }
+  if {![info exists ::sergame::timeMode] || $::sergame::timeMode ne "timebonus"} { return 0 }
+  if {![info exists ::moderne::horloge::ms($n)] || $::moderne::jeu::fini} { return 0 }
+  if {[::moderne::pendule::reste $n] > 0} { return 0 }
+  set tombe($n) 1
+  after idle [list ::moderne::jeu::fin [expr {$n == 1 ? 0 : 1}] temps]
+  return 1
 }
 
 ### The clock of the side that just moved, kept in the game after its
@@ -658,7 +679,9 @@ proc ::moderne::jeu::abandonner {} {
 ### same time control
 proc ::moderne::jeu::revanche {{inverser 1}} {
   set n $::sergame::engine
-  set depart $::moderne::pendule::depart
+  # (the clock not started yet, a game ended at once: the usual start)
+  set depart {}
+  catch {set depart $::moderne::pendule::depart}
   set toby [expr {![catch {::moderne::toby::estToby $n} t] && $t}]
   set ae [expr {([info exists ::moderne::alterego::actif] && $::moderne::alterego::actif) ||
                 ([info exists ::moderne::alterego::dernier] && $::moderne::alterego::dernier)}]
